@@ -23,23 +23,40 @@ class Scheduler:
         if self.scheduler_type == SchedulerType.SLURM:
             self.submit_command = "sbatch"
             self.status_command = "squeue"
+            self.info_command = "sinfo"
             self.cancel_command = "scancel"
         else:
             raise NotImplementedError(f"Scheduler type {scheduler_type} is not implemented yet.")
+        
+    def get_idle_nodes(self, status = "idle", node_type = "ne") -> int:
+
+        if self.scheduler_type == SchedulerType.SLURM:
+            cmd = [self.info_command, "-N", "-h", "-t", status, "-o", "%N"]
+            cmd.extend(["-p", PARTITION])
+
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            return [line.strip() for line in result.stdout.splitlines() if line.strip() if line.startswith(node_type)]
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
 
     def submit_job(self, cwd: Path, output_file: Path) -> str:
+
+        nodes = self.get_idle_nodes()
+        if len(nodes) == 0:
+            raise RuntimeError("No idle nodes available for job submission. Try again later.")
 
         job_script = spust_g16_script.substitute(
             num_cpus=NUMBER_OF_CORES,
             job_name=output_file.stem,
             memory=MEMORY,
-            partition=PARTITION
+            partition=PARTITION,
+            node=nodes[0]
         )
         job_script_path = Path(cwd, "job_script.sh")
 
         with open(job_script_path, "w") as f:
             f.write(job_script)
-        subprocess.run(["chmod", "+x", job_script_path], check=True)
+        subprocess.run(["chmod", "a+x", job_script_path], check=True)
         result = subprocess.run([self.submit_command, job_script_path.name, output_file.name], capture_output=True, text=True, cwd=cwd)
 
         if result.returncode != 0:

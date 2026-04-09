@@ -7,6 +7,7 @@ spust_g16_script = Template("""#!/bin/bash
 #SBATCH -n 1
 #SBATCH -J ${job_name}
 #SBATCH --mem=${memory}mb
+#SBATCH -w ${node}
 #SBATCH -p ${partition}
 
 G16_DIR="g16"
