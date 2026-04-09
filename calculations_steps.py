@@ -25,7 +25,7 @@ def run_lanl_optimization(case: WorkflowCase, scheduler: Scheduler):
     else:
         raise ValueError(f"Unsupported input file format: {input_file.suffix}")
     
-    job_id = scheduler.submit_job(folder, name)
+    job_id = scheduler.submit_job(folder, output_file)
 
     current_step.job_id = job_id
     current_step.status = Status.RUNNING

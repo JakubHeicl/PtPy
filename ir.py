@@ -4,12 +4,12 @@ from enum import Enum
 
 
 class CalculationType(Enum):
-    LANL_OPT = "LANL optimization"
-    DZ_OPT = "DZ optimization   "
-    AIM_ANALYSIS = "AIM analysis"
-    LIGAND_ENERGIES_CALCULATION = "Ligand energies calculation"
-    ALIP_CALCULATION = "ALIP calculation"
-    ELSTAT_CALCULATION = "Electrostatic potential calculation"
+    LANL_OPT = "lanl_opt"
+    DZ_OPT = "dz_opt"
+    AIM_ANALYSIS = "aim_analysis"
+    LIGAND_ENERGIES_CALCULATION = "ligand_energies_calculation"
+    ALIP_CALCULATION = "alip_calculation"
+    ELSTAT_CALCULATION = "elstat_calculation"
 
 class Status(Enum):
     PENDING = "pending"

@@ -55,9 +55,9 @@ def proccess_case(case: WorkflowCase, scheduler: Scheduler):
         run_step(case, scheduler)
 
     if current_step.status == Status.RUNNING:
-        check_step(case)
+        check_step(case, scheduler)
 
-    if current_step.status == Status.COMPLETED:
+    if current_step.status == Status.COMPLETED and not case.terminated:
         case.advance()
         proccess_case(case, scheduler)
 
@@ -89,10 +89,8 @@ def run_step(case: WorkflowCase, scheduler: Scheduler):
     else:
         raise ValueError(f"Unknown calculation type: {current_step.calculation_type}")
         
-
-def check_step(case: WorkflowCase):
+def check_step(case: WorkflowCase, scheduler: Scheduler):
     pass
-
 
 if __name__ == "__main__":
     INPUT_FOLDER.mkdir(parents=True, exist_ok=True)

@@ -19,3 +19,5 @@ export LD_LIBRARY_PATH="{$g16root/g16}:${LD_LIBRARY_PATH}"
 
 g16 $1
 """)
+
+submit_job_in_folder_script = "for ff in *.com; do"
