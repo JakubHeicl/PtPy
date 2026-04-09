@@ -39,6 +39,7 @@ class Scheduler:
 
         with open(job_script_path, "w") as f:
             f.write(job_script)
+        subprocess.run(["chmod", "+x", job_script_path], check=True)
         result = subprocess.run([self.submit_command, job_script_path.name, output_file.name], capture_output=True, text=True, cwd=cwd)
 
         if result.returncode != 0:
