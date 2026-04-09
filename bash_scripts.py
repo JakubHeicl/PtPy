@@ -1,8 +1,7 @@
 from string import Template
 
 
-spust_g16_script = Template("""
-#!/bin/bash
+spust_g16_script = Template("""#!/bin/bash
 #SBATCH -c ${num_cpus}
 #SBATCH -N 1
 #SBATCH -n 1
