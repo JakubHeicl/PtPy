@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 from .ir import StepStatus, WorkflowCase, CalculationType
 from .parser import TerminationStatus, get_last_geometry, get_log_termination_status
@@ -84,6 +85,17 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler):
     if scheduler.is_job_running(job_id):
         return
     
+    formchk_file = Path(current_step.folder, f"{current_step.input_file.with_suffix('.fchk')}")
+
+    if not formchk_file.exists():
+        print(f"Formchk file {formchk_file} not found for {current_step.calculation_type.value} of case {case.name}. Marking as failed.")
+        current_step.status = StepStatus.FAILED
+        return
+    
+    while formchk_file.stat().st_mtime + 15 < time.time():
+        print(f"Formchk file {formchk_file} for {current_step.calculation_type.value} of case {case.name} might still not be ready. Waiting...")
+        time.sleep(2)
+
     try:
         termination_status = get_log_termination_status(case)
         if termination_status == TerminationStatus.SUCCESS:
