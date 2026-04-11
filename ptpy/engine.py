@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import time
 
 from .repository import Repository
 from .ir import WorkflowCase, CalculationStep, StepStatus, CalculationType
@@ -93,22 +94,25 @@ def check_step(case: WorkflowCase, scheduler: Scheduler):
     check_function(case, scheduler)
 
 def run():
-    INPUT_FOLDER.mkdir(parents=True, exist_ok=True)
-    REPOSITORY_FOLDER.mkdir(parents=True, exist_ok=True)
-    RUN_FOLDER.mkdir(parents=True, exist_ok=True)
+    while True:
+        INPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+        REPOSITORY_FOLDER.mkdir(parents=True, exist_ok=True)
+        RUN_FOLDER.mkdir(parents=True, exist_ok=True)
 
-    repo = Repository()
-    scheduler = Scheduler(SCHEDULER)
+        repo = Repository()
+        scheduler = Scheduler(SCHEDULER)
 
-    repo.load_from_folder(REPOSITORY_FOLDER)
-    add_to_repository_from_input_folder(repo, INPUT_FOLDER)
+        repo.load_from_folder(REPOSITORY_FOLDER)
+        add_to_repository_from_input_folder(repo, INPUT_FOLDER)
 
-    for case in repo.cases:
-        proccess_case(case, scheduler)
+        for case in repo.cases:
+            proccess_case(case, scheduler)
 
-    repo.save_to_folder(REPOSITORY_FOLDER)
+        repo.save_to_folder(REPOSITORY_FOLDER)
 
-    print("All cases processed for now, run the workflow later to check for running jobs and to process next steps.")
+        print("All cases processed for now, run the workflow later to check for running jobs and to process next steps.")
+
+        time.sleep(3)
 
 def show_status():
 
