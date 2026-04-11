@@ -20,9 +20,18 @@ export LD_LIBRARY_PATH="{$$g16root/g16}:$${LD_LIBRARY_PATH}"
 g16 $$1
 """)
 
-lanl_header = Template("%mem=${memory}MB\n%nprocshared=${num_cpus}\n#p opt hf lanl1mb\n\n${job_description}\n\n${charge} ${mult}\n")
+lanl_header = Template("""%mem=${memory}MB
+%nprocshared=${num_cpus}
+%chk=${check_file}
+#p opt hf lanl1mb
+
+${job_description}
+
+${charge} ${mult}
+""")
+
 dz_header =   Template("""%mem=${memory}MB
-%nproc=${num_cpus}
+%nprocshared=${num_cpus}
 %chk=${check_file}
 #p B3LYP/gen Opt Freq pseudo=cards EmpiricalDispersion=GD3BJ SCRF=(COSMO)
 
@@ -33,7 +42,7 @@ ${charge} ${mult}
 
 cube_header = Template("""--Link1--
 %mem=${memory}MB
-%nproc=${num_cpus}
+%nprocshared=${num_cpus}
 %chk=${check_file}
 #p B3LYP/gen pseudo=cards EmpiricalDispersion=GD3BJ geom=check SCRF=(COSMO) pop=(nboread) cube=density cube=potential
 

@@ -55,13 +55,13 @@ def xyz_to_lanl(input_file, output_file, charge, mult):
     output_path = Path(output_file)
     lines = input_path.read_text(encoding="utf-8").splitlines()
     geometry_lines = [f"{line}\n" for line in lines[2:]]
-    _write_lanl_input(output_path, int(charge), int(mult), geometry_lines)
+    _write_lanl_input(output_path, Path(output_file).with_suffix(".chk"), int(charge), int(mult), geometry_lines)
 
 def com_to_lanl(input_file, output_file):
     input_path = Path(input_file)
     output_path = Path(output_file)
     charge, mult, geometry_lines = _extract_com_data(input_path)
-    _write_lanl_input(output_path, charge, mult, geometry_lines)
+    _write_lanl_input(output_path, Path(output_file).with_suffix(".chk"), charge, mult, geometry_lines)
     return charge, mult
 
 def get_charge_and_mult_from_com(input_file):
@@ -98,10 +98,11 @@ def _is_geometry_line(line: str) -> bool:
     parts = line.strip().split()
     return len(parts) > 1 and parts[0].capitalize() in _SYMBOLS
 
-def _write_lanl_input(com_file: Path, charge: int, mult: int, geometry_lines: list[str]) -> None:
+def _write_lanl_input(com_file: Path, chk_file: Path, charge: int, mult: int, geometry_lines: list[str]) -> None:
     header = lanl_header.substitute(
         memory=MEMORY,
         num_cpus=NUMBER_OF_CORES,
+        check_file=chk_file.name,
         job_description="LANL optimization",
         charge=charge,
         mult=mult
