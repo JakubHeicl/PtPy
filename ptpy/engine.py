@@ -134,9 +134,9 @@ def run_test():
         repo.load_from_folder(REPOSITORY_FOLDER)
 
         for case in repo.cases:
-            if case.current_step.job_id:
-                print(f"Cancelling job {case.current_step.job_id} for case {case.name}...")
-                scheduler.cancel_job(case.current_step.job_id)
+            if case.get_current_step().job_id:
+                print(f"Cancelling job {case.get_current_step().job_id} for case {case.name}...")
+                scheduler.cancel_job(case.get_current_step().job_id)
 
         shutil.rmtree(REPOSITORY_FOLDER, ignore_errors=True)
     
