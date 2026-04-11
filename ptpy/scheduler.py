@@ -79,7 +79,6 @@ class Scheduler:
                 return True
         return False
 
-
     def submit_job(self, cwd: Path, output_file: Path) -> str:
 
         nodes = self.get_nodes(status="idle")
@@ -110,3 +109,8 @@ class Scheduler:
         job_script_path.unlink()
         return job_id
 
+    def cancel_job(self, job_id: str) -> None:
+        if self.scheduler_type == SchedulerType.SLURM:
+            subprocess.run([self.cancel_command, job_id], check=True)
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")

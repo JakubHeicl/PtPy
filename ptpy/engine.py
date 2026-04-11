@@ -6,7 +6,7 @@ from .ir import WorkflowCase, CalculationStep, StepStatus, CalculationType
 from .config import REPOSITORY_FOLDER, RUN_FOLDER, INPUT_FOLDER, SCHEDULER
 from .utils import get_charge_and_mult_from_com
 from .calculations_steps import CALCULATION_TYPE_TO_CHECK_STEP, CALCULATION_TYPE_TO_RUN_STEP
-from .scheduler import Scheduler 
+from .scheduler import Scheduler
 
 def add_to_repository_from_input_folder(repo: Repository, input_folder: Path):
     for input_file in input_folder.glob("*.xyz"):
@@ -127,8 +127,22 @@ def show_status():
 def run_test():
     print("Running test...")
 
-    shutil.rmtree(REPOSITORY_FOLDER, ignore_errors=True)
-    shutil.rmtree(RUN_FOLDER, ignore_errors=True)
+    scheduler = Scheduler(SCHEDULER)
+
+    if REPOSITORY_FOLDER.exists():
+        repo = Repository()
+        repo.load_from_folder(REPOSITORY_FOLDER)
+
+        for case in repo.cases:
+            if case.current_step.job_id:
+                print(f"Cancelling job {case.current_step.job_id} for case {case.name}...")
+                scheduler.cancel_job(case.current_step.job_id)
+
+        shutil.rmtree(REPOSITORY_FOLDER, ignore_errors=True)
+    
+    if RUN_FOLDER.exists():
+        print(f"Removing run folder {RUN_FOLDER}...")
+        shutil.rmtree(RUN_FOLDER, ignore_errors=True)
 
     run()
         
