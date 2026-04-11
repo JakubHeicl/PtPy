@@ -90,9 +90,8 @@ def run_aim_analysis(case: WorkflowCase, scheduler: Scheduler):
     folder.mkdir(parents=True, exist_ok=True)
     current_step.remote_folder = Path(AIM_FOLDER, case.name)
     remote_folder = current_step.remote_folder
-    scheduler.remote_connect(AIM_CLUSTER)
-    remote_folder.mkdir(parents=True, exist_ok=True)
-    scheduler.remote_disconnect()
+    
+    scheduler.run_remote_command(AIM_CLUSTER, f"mkdir -p {remote_folder}")
 
     shutil.copy(formchk_file, folder)
     scheduler.transfer_file_to_remote(formchk_file, AIM_CLUSTER, str(remote_folder))

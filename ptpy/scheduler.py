@@ -136,6 +136,16 @@ class Scheduler:
         else:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
         
+    def run_remote_command(self, target: str, command: str) -> None:
+        print(f"Running command on {target}: {command}")
+        if self.scheduler_type == SchedulerType.SLURM:
+            try:
+                subprocess.run(["ssh", target, command], check=True)
+            except subprocess.CalledProcessError:
+                raise RuntimeError(f"Failed to run command on {target}: {command}")
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
+    
     def transfer_file_to_remote(self, file: Path, remote_host: str, remote_path: str) -> None:
         print(f"Transferring file {file} to {remote_host}:{remote_path}...")
         if self.scheduler_type == SchedulerType.SLURM:
