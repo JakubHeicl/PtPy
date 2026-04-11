@@ -18,6 +18,8 @@ export LD_LIBRARY_PATH="{$$g16root/g16}:$${LD_LIBRARY_PATH}"
 . $$g16root/g16/bsd/g16.profile
 
 g16 $$1
+                            
+formchk ar5mol2_lanl.chk ar5mol2_lanl.fchk
 """)
 
 lanl_header = Template("""%mem=${memory}MB
