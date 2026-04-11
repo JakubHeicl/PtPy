@@ -1,8 +1,8 @@
 from enum import Enum
 from pathlib import Path
 import subprocess
-from bash_scripts import spust_g16_script
-from config import SCHEDULER, PARTITION, NUMBER_OF_CORES, MEMORY
+from scripts import spust_g16_script
+from config import SCHEDULER, PARTITION, NUMBER_OF_CORES, MEMORY, USER
 
 class SchedulerType(Enum):
     SLURM = "slurm"
@@ -28,22 +28,66 @@ class Scheduler:
         else:
             raise NotImplementedError(f"Scheduler type {scheduler_type} is not implemented yet.")
         
-    def get_idle_nodes(self, status = "idle", node_type = "ne") -> int:
+    def get_nodes(self, status = "idle", node_type = "ne") -> list[str] | None:
 
         if self.scheduler_type == SchedulerType.SLURM:
             cmd = [self.info_command, "-N", "-h", "-t", status, "-o", "%N"]
             cmd.extend(["-p", PARTITION])
 
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return [line.strip() for line in result.stdout.splitlines() if line.strip() if line.startswith(node_type)]
+
+            lines = result.stdout.splitlines()
+            if not lines:
+                return None
+            return [line.strip() for line in lines if line.strip() and line.startswith(node_type)]
         else:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
 
+    def get_running_jobs(self, running = True, pending = True, partition = None) -> list[tuple[str, str]]:
+
+        if((not running) and (not pending)):
+            raise RuntimeError("Specify atleast one of running or pending arguments")
+
+        type = ""
+
+        if running:
+            type += "R"
+        if pending:
+            type = ",".join([type, "PD"])
+
+        cmd = ["squeue", "-h", "-u", USER, "-t", type, "-o", "%i|%j"]
+        if partition:
+            cmd.extend(["-p", partition])
+
+        r = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        out = []
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            jobid, name = line.split("|", 1)
+            out.append((jobid, name))
+        return out
+    
+    def is_job_running(self, job_id: str) -> bool:
+
+        jobs = self.get_running_jobs()
+
+        for jid, _ in jobs:
+            if jid == job_id:
+                return True
+        return False
+
+
     def submit_job(self, cwd: Path, output_file: Path) -> str:
 
-        nodes = self.get_idle_nodes()
-        if len(nodes) == 0:
-            raise RuntimeError("No idle nodes available for job submission. Try again later.")
+        nodes = self.get_nodes(status="idle")
+        if not nodes:
+            nodes = self.get_nodes(status="mixed")
+        if not nodes:
+            nodes = self.get_nodes(status="alloc")
+        if not nodes:
+            raise RuntimeError("No available nodes to submit the job.")
 
         job_script = spust_g16_script.substitute(
             num_cpus=NUMBER_OF_CORES,
@@ -62,6 +106,6 @@ class Scheduler:
         if result.returncode != 0:
             raise RuntimeError(f"Failed to submit job: {result.stderr}")
         job_id = result.stdout.strip().split()[-1]
-        #job_script_path.unlink()
+        job_script_path.unlink()
         return job_id
 

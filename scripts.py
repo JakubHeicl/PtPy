@@ -20,4 +20,4 @@ export LD_LIBRARY_PATH="{$$g16root/g16}:$${LD_LIBRARY_PATH}"
 g16 $$1
 """)
 
-submit_job_in_folder_script = "for ff in *.com; do"
+lanl_header = Template("%mem=${memory}MB\n%nprocshared=${num_cpus}\n#p opt hf lanl1mb\n\n${job_description}\n\n${charge} ${mult}\n")

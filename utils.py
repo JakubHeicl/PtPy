@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from scripts import lanl_header
+from config import MEMORY, NUMBER_OF_CORES
 
 _SYMBOLS = {
     "X",
@@ -18,6 +20,35 @@ _SYMBOLS = {
     "Nh", "Fl", "Mc", "Lv", "Ts", "Og",
 }
 
+def getbasis(name, atom, bases_folder: Path):
+    
+    if atom == "H" or atom == "C" or atom == "O" or atom == "N" or atom == "F":
+        return ""
+    
+    basis_file = Path(bases_folder, f"{atom}_opt_plus_bas")
+
+    try:
+        with open(basis_file, "r") as file:
+            data = file.read()
+            return data
+    except:
+        print(f"I dont have basis for {name} for the atom {atom}")
+        return f"({atom})"
+        
+def getpot(name, atom, bases_folder: Path):
+    
+    if atom == "H" or atom == "C" or atom == "O" or atom == "N" or atom == "F":
+        return ""
+    
+    basis_file = Path(bases_folder, f"{atom}_pot")
+
+    try:
+        with open(basis_file) as file:
+            data = file.read()
+            return data
+    except:
+        print(f"I dont have potential for {name} for the atom {atom}")
+        return f"({atom})"
 
 def xyz_to_lanl(input_file, output_file, charge, mult):
     input_path = Path(input_file)
@@ -26,7 +57,6 @@ def xyz_to_lanl(input_file, output_file, charge, mult):
     geometry_lines = [f"{line}\n" for line in lines[2:]]
     _write_lanl_input(output_path, int(charge), int(mult), geometry_lines)
 
-
 def com_to_lanl(input_file, output_file):
     input_path = Path(input_file)
     output_path = Path(output_file)
@@ -34,11 +64,9 @@ def com_to_lanl(input_file, output_file):
     _write_lanl_input(output_path, charge, mult, geometry_lines)
     return charge, mult
 
-
 def get_charge_and_mult_from_com(input_file):
     charge, mult, _ = _extract_com_data(Path(input_file))
     return charge, mult
-
 
 def _extract_com_data(input_file: Path) -> tuple[int, int, list[str]]:
     lines = input_file.read_text(encoding="utf-8").splitlines()
@@ -60,20 +88,23 @@ def _extract_com_data(input_file: Path) -> tuple[int, int, list[str]]:
 
     return charge, mult, geometry_lines
 
-
 def _find_geometry_start(lines: list[str]) -> int:
     for index, line in enumerate(lines):
         if _is_geometry_line(line):
             return index
     raise ValueError("Could not find geometry block in Gaussian input.")
 
-
 def _is_geometry_line(line: str) -> bool:
     parts = line.strip().split()
     return len(parts) > 1 and parts[0].capitalize() in _SYMBOLS
 
-
 def _write_lanl_input(output_file: Path, charge: int, mult: int, geometry_lines: list[str]) -> None:
-    header = f"%mem=2GB\n%nprocshared=4\n#p opt hf lanl1mb\n\njob description\n\n{charge} {mult}\n"
+    header = lanl_header.substitute(
+        memory=MEMORY,
+        num_cpus=NUMBER_OF_CORES,
+        job_description="LANL optimization",
+        charge=charge,
+        mult=mult
+    )
     content = header + "".join(geometry_lines) + "\n"
     output_file.write_text(content, encoding="utf-8")

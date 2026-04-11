@@ -1,10 +1,11 @@
 from repository import Repository
-from ir import WorkflowCase, CalculationStep, Status, CalculationType
+from ir import WorkflowCase, CalculationStep, StepStatus, CalculationType
 from pathlib import Path
 from config import REPOSITORY_FOLDER, RUN_FOLDER, INPUT_FOLDER, SCHEDULER
 from utils import get_charge_and_mult_from_com
-from calculations_steps import run_lanl_optimization
+from calculations_steps import run_lanl_optimization, run_dz_optimization
 from scheduler import Scheduler 
+from parser import get_log_termination_status, TerminationStatus
 
 def add_to_repository_from_input_folder(repo: Repository, input_folder: Path):
     for input_file in input_folder.glob("*.xyz"):
@@ -25,7 +26,7 @@ def add_to_repository_from_input_folder(repo: Repository, input_folder: Path):
             multiplicity=mult,
             steps=[CalculationStep(calculation_type = calc_type, 
                                    folder = Path(directory, calc_type.value), 
-                                   status = Status.PENDING) for calc_type in CalculationType]
+                                   status = StepStatus.PENDING) for calc_type in CalculationType]
         ))
 
     for input_file in input_folder.glob("*.com"):
@@ -45,26 +46,26 @@ def add_to_repository_from_input_folder(repo: Repository, input_folder: Path):
             multiplicity=mult,
             steps=[CalculationStep(calculation_type = calc_type, 
                                    folder = Path(directory, calc_type.value), 
-                                   status = Status.PENDING) for calc_type in CalculationType]
+                                   status = StepStatus.PENDING) for calc_type in CalculationType]
         ))
 
 def proccess_case(case: WorkflowCase, scheduler: Scheduler):
     current_step = case.get_current_step()
 
-    if current_step.status == Status.PENDING:
+    if current_step.status == StepStatus.PENDING:
         run_step(case, scheduler)
 
-    if current_step.status == Status.RUNNING:
+    if current_step.status == StepStatus.RUNNING:
         check_step(case, scheduler)
 
-    if current_step.status == Status.COMPLETED and not case.terminated:
+    if current_step.status == StepStatus.COMPLETED and not case.terminated:
         case.advance()
         proccess_case(case, scheduler)
 
-    if current_step.status == Status.FAILED:
+    if current_step.status == StepStatus.FAILED:
         print(f"Calculation {current_step.calculation_type.value} for case {case.name} failed. Please check the logs and fix the issue before re-running.")
         if input("Do you want to retry the failed calculation after fixing the issue? (y/n): ").lower() == "y":
-            current_step.status = Status.PENDING
+            current_step.status = StepStatus.PENDING
             proccess_case(case, scheduler)
 
 def run_step(case: WorkflowCase, scheduler: Scheduler):
@@ -77,7 +78,7 @@ def run_step(case: WorkflowCase, scheduler: Scheduler):
     if current_step.calculation_type == CalculationType.LANL_OPT:
         run_lanl_optimization(case, scheduler)
     elif current_step.calculation_type == CalculationType.DZ_OPT:
-        raise NotImplementedError("DZ optimization is not implemented yet.")
+        run_dz_optimization(case, scheduler)
     elif current_step.calculation_type == CalculationType.AIM_ANALYSIS:
         raise NotImplementedError("AIM analysis is not implemented yet.")   
     elif current_step.calculation_type == CalculationType.LIGAND_ENERGIES_CALCULATION:
@@ -90,7 +91,31 @@ def run_step(case: WorkflowCase, scheduler: Scheduler):
         raise ValueError(f"Unknown calculation type: {current_step.calculation_type}")
         
 def check_step(case: WorkflowCase, scheduler: Scheduler):
-    pass
+    
+    current_step = case.get_current_step()
+    job_id = current_step.job_id
+
+    if not job_id:
+        print(f"No job ID found for {current_step.calculation_type.value} of case {case.name}. Marking as failed.")
+        current_step.status = StepStatus.FAILED
+        return
+
+    if scheduler.is_job_running(job_id):
+        return
+    
+    try:
+        termination_status = get_log_termination_status(case)
+        if termination_status == TerminationStatus.SUCCESS:
+            current_step.status = StepStatus.COMPLETED
+            print(f"{current_step.calculation_type.value} for case {case.name} completed successfully.")
+        else:
+            current_step.status = StepStatus.FAILED
+            print(f"{current_step.calculation_type.value} for case {case.name} failed. Please check the logs for details.")
+    except Exception as e:
+        current_step.status = StepStatus.FAILED
+        print(f"Error while checking termination status for {current_step.calculation_type.value} of case {case.name}: {e}")
+    
+
 
 if __name__ == "__main__":
     INPUT_FOLDER.mkdir(parents=True, exist_ok=True)

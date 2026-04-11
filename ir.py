@@ -11,7 +11,7 @@ class CalculationType(Enum):
     ALIP_CALCULATION = "alip_calculation"
     ELSTAT_CALCULATION = "elstat_calculation"
 
-class Status(Enum):
+class StepStatus(Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -21,8 +21,11 @@ class Status(Enum):
 @dataclass
 class CalculationStep:
     calculation_type: CalculationType
-    status: Status
+    status: StepStatus
     folder: Path
+    input_file: Path | None = None
+    log_file: Path | None = None
+    chk_file: Path | None = None
     job_id: str | None = None
 
     def to_json(self) -> dict:
@@ -31,6 +34,9 @@ class CalculationStep:
             "status": self.status.value,
             "job_id": self.job_id,
             "folder": str(self.folder) if self.folder is not None else None,
+            "input_file": str(self.input_file) if self.input_file is not None else None,
+            "log_file": str(self.log_file) if self.log_file is not None else None,
+            "chk_file": str(self.chk_file) if self.chk_file is not None else None,
         }
 
     @classmethod
@@ -38,9 +44,12 @@ class CalculationStep:
         folder = data.get("folder")
         return cls(
             calculation_type=CalculationType(data["calculation_type"]),
-            status=Status(data["status"]),
+            status=StepStatus(data["status"]),
             job_id=data.get("job_id"),
             folder=Path(folder) if folder is not None else None,
+            input_file=Path(data["input_file"]) if data.get("input_file") is not None else None,
+            log_file=Path(data["log_file"]) if data.get("log_file") is not None else None,
+            chk_file=Path(data["chk_file"]) if data.get("chk_file") is not None else None,
         )
 
 
@@ -84,6 +93,16 @@ class WorkflowCase:
         if 0 <= self.current_step_index < len(self.steps):
             return self.steps[self.current_step_index]
         raise IndexError("Current step index is out of range.")
+    
+    def get_previous_step(self) -> CalculationStep | None:
+        if self.current_step_index > 0:
+            return self.steps[self.current_step_index - 1]
+        return None
+    
+    def get_next_step(self) -> CalculationStep | None:
+        if self.current_step_index < len(self.steps) - 1:
+            return self.steps[self.current_step_index + 1]
+        return None
     
     def advance(self):
         if self.terminated:
