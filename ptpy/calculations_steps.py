@@ -1,11 +1,12 @@
 from pathlib import Path
 import time
+import shutil
 
 from .ir import StepStatus, WorkflowCase, CalculationType
 from .parser import TerminationStatus, get_last_geometry, get_log_termination_status
 from .scheduler import Scheduler
 from .utils import xyz_to_lanl, com_to_lanl, make_dz_file
-from .config import LANL_EXTENSION, DZ_EXTENSION
+from .config import AIM_CLUSTER, AIM_FOLDER, LANL_EXTENSION, DZ_EXTENSION
 
 def run_lanl_optimization(case: WorkflowCase, scheduler: Scheduler):
     current_step = case.get_current_step()
@@ -72,6 +73,32 @@ def run_dz_optimization(case: WorkflowCase, scheduler: Scheduler):
     current_step.status = StepStatus.RUNNING
     print(f"Submitted DZ optimization for case {case.name} with job ID {job_id}.")
     
+def run_aim_analysis(case: WorkflowCase, scheduler: Scheduler):
+    
+    current_step = case.get_current_step()
+    previous_step = case.get_previous_step()
+
+    if current_step.calculation_type != CalculationType.AIM_ANALYSIS:
+        raise ValueError(f"Expected AIM ANALYSIS step, got {current_step.calculation_type}.")
+    
+    if previous_step.calculation_type != CalculationType.DZ_OPT:
+        raise ValueError(f"Expected previous step to be DZ OPTIMIZATION, got {previous_step.calculation_type}.")
+    
+    formchk_file = previous_step.fchk_file
+
+    folder = current_step.folder
+    folder.mkdir(parents=True, exist_ok=True)
+    current_step.remote_folder = Path(AIM_FOLDER, case.name)
+    remote_folder = current_step.remote_folder
+    scheduler.remote_connect(AIM_CLUSTER)
+    remote_folder.mkdir(parents=True, exist_ok=True)
+    scheduler.remote_disconnect()
+
+    shutil.copy(formchk_file, folder)
+    scheduler.transfer_file_to_remote(formchk_file, AIM_CLUSTER, str(remote_folder))
+
+    raise NotImplementedError("AIM analysis step is not implemented yet. This is a placeholder for the actual implementation which would involve running the AIM analysis on the remote cluster and retrieving the results.")
+
 def check_optimization(case: WorkflowCase, scheduler: Scheduler):
     
     current_step = case.get_current_step()
@@ -121,6 +148,7 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler):
 CALCULATION_TYPE_TO_RUN_STEP = {
     CalculationType.LANL_OPT: run_lanl_optimization,
     CalculationType.DZ_OPT: run_dz_optimization,
+    CalculationType.AIM_ANALYSIS: run_aim_analysis,
 }  
 
 CALCULATION_TYPE_TO_CHECK_STEP = {

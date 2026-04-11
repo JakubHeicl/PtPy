@@ -115,3 +115,33 @@ class Scheduler:
             subprocess.run([self.cancel_command, job_id], check=True)
         else:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
+        
+    def remote_connect(self, target: str) -> None:
+        print(f"Connecting to {target}...")
+        if self.scheduler_type == SchedulerType.SLURM:
+            try:
+                subprocess.run(["ssh", target], check=True)
+            except subprocess.CalledProcessError:
+                raise RuntimeError(f"Failed to connect to {target}")
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
+        
+    def remote_disconnect(self) -> None:
+        print(f"Disconnecting...")
+        if self.scheduler_type == SchedulerType.SLURM:
+            try:
+                subprocess.run(["exit"], check=True)
+            except subprocess.CalledProcessError:
+                raise RuntimeError(f"Failed to disconnect")
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
+        
+    def transfer_file_to_remote(self, file: Path, remote_host: str, remote_path: str) -> None:
+        print(f"Transferring file {file} to {remote_host}:{remote_path}...")
+        if self.scheduler_type == SchedulerType.SLURM:
+            try:
+                subprocess.run(["rsync", "-avz", file, f"{remote_host}:{remote_path}"])
+            except subprocess.CalledProcessError:
+                raise RuntimeError(f"Failed to transfer file {file} to {remote_path}")
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")

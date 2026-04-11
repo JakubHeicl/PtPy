@@ -74,6 +74,7 @@ class CalculationStep:
     calculation_type: CalculationType
     status: StepStatus
     folder: Path
+    remote_folder: Path | None = None
     input_file: Path | None = None
     log_file: Path | None = None
     chk_file: Path | None = None

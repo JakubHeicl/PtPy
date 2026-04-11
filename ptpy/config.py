@@ -10,6 +10,9 @@ BASES_FOLDER: Path = Path(PACKAGE_ROOT, "bases")
 LANL_EXTENSION = "lanl"
 DZ_EXTENSION = "dz" 
 
+AIM_CLUSTER = "heiclj@jupiter.karlov.mff.cuni.cz"
+AIM_FOLDER = "/Volumes/Home_2/Users_Ju/heiclj/ptpy_aim_calc"
+
 SCHEDULER = "slurm" # Options: "slurm", "local", "pbs"
 PARTITION = "q_kchfo"
 NUMBER_OF_CORES = 16
