@@ -77,6 +77,7 @@ class CalculationStep:
     input_file: Path | None = None
     log_file: Path | None = None
     chk_file: Path | None = None
+    fchk_file: Path | None = None
     job_id: str | None = None
 
     def to_json(self) -> dict:
@@ -88,6 +89,7 @@ class CalculationStep:
             "input_file": str(self.input_file) if self.input_file is not None else None,
             "log_file": str(self.log_file) if self.log_file is not None else None,
             "chk_file": str(self.chk_file) if self.chk_file is not None else None,
+            "fchk_file": str(self.fchk_file) if self.fchk_file is not None else None,
         }
 
     @classmethod
@@ -101,7 +103,9 @@ class CalculationStep:
             input_file=Path(data["input_file"]) if data.get("input_file") is not None else None,
             log_file=Path(data["log_file"]) if data.get("log_file") is not None else None,
             chk_file=Path(data["chk_file"]) if data.get("chk_file") is not None else None,
+            fchk_file=Path(data["fchk_file"]) if data.get("fchk_file") is not None else None,
         )
+
 
 
 @dataclass
