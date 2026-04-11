@@ -123,3 +123,4 @@ def show_status():
             message += f" | Current step: {current_step.calculation_type.value} - {current_step.status.value}"
         print(message)
         
+        
