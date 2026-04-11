@@ -49,7 +49,7 @@ class Geometry:
     
     @property
     def geometry_lines(self) -> list[str]:
-        return [f"{atom.symbol}     {atom.x}  {atom.y}  {atom.z}" for atom in self.atoms]
+        return [f"{atom.symbol}     {atom.x:12.7f}  {atom.y:12.7f}  {atom.z:12.7f}" for atom in self.atoms]
     
     @property
     def atoms_symbols(self) -> set[str]:

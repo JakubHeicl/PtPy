@@ -108,7 +108,7 @@ def run():
 
     repo.save_to_folder(REPOSITORY_FOLDER)
 
-    print("All cases processed for now, run the workflow later to check for running jobs and process next steps.")
+    print("All cases processed for now, run the workflow later to check for running jobs and to process next steps.")
 
 def show_status():
 
@@ -140,10 +140,10 @@ def restore():
                 print(f"Cancelling job {case.get_current_step().job_id} for case {case.name}...")
                 scheduler.cancel_job(case.get_current_step().job_id)
 
-        print(f"Removing run folder {REPOSITORY_FOLDER}...")
+        print(f"Removing repository folder '{REPOSITORY_FOLDER}'...")
         shutil.rmtree(REPOSITORY_FOLDER, ignore_errors=True)
     
     if RUN_FOLDER.exists():
-        print(f"Removing run folder {RUN_FOLDER}...")
+        print(f"Removing run folder '{RUN_FOLDER}'...")
         shutil.rmtree(RUN_FOLDER, ignore_errors=True)
         

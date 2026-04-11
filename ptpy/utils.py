@@ -120,7 +120,10 @@ def make_dz_file(com_file: Path, chk_file: Path, geometry_lines: list[str], atom
         mult=mult
     )
 
-    content = header + "".join(geometry_lines) + "\n"
+    content = header
+
+    for geometry_line in geometry_lines:
+        content += geometry_line + "\n"
 
     relevant_atoms = ["O", "N", "C", "H", "F"]
 
@@ -148,6 +151,8 @@ def make_dz_file(com_file: Path, chk_file: Path, geometry_lines: list[str], atom
         charge=charge,
         mult=mult
     )
+
+    content += header
 
     content += "\n"
 
