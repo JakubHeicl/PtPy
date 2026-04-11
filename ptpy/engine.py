@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 from .repository import Repository
 from .ir import WorkflowCase, CalculationStep, StepStatus, CalculationType
@@ -122,5 +123,12 @@ def show_status():
             current_step = case.get_current_step()
             message += f" | Current step: {current_step.calculation_type.value} - {current_step.status.value}"
         print(message)
-        
+
+def run_test():
+    print("Running test...")
+
+    shutil.rmtree(REPOSITORY_FOLDER, ignore_errors=True)
+    shutil.rmtree(RUN_FOLDER, ignore_errors=True)
+
+    run()
         
