@@ -5,6 +5,21 @@ import subprocess
 from .scripts import spust_g16_script
 from .config import SCHEDULER, PARTITION, NUMBER_OF_CORES_GAUSSAIN, MEMORY, USER
 
+class UnsificientResourcesException(Exception):
+    def __init__(self, message="No available resources to submit the job."):
+        self.message = message
+        super().__init__(self.message)
+
+class RemoteExecutionException(Exception):
+    def __init__(self, message="Failed to execute command on remote host."):
+        self.message = message
+        super().__init__(self.message)
+
+class SubmissionFailedException(Exception):
+    def __init__(self, message="Failed to submit the job."):
+        self.message = message
+        super().__init__(self.message)
+
 class SchedulerType(Enum):
     SLURM = "slurm"
     PBS = "pbs"
@@ -87,7 +102,7 @@ class Scheduler:
         if not nodes:
             nodes = self.get_nodes(status="alloc")
         if not nodes:
-            raise RuntimeError("No available nodes to submit the job.")
+            raise UnsificientResourcesException()
 
         job_script = spust_g16_script.substitute(
             num_cpus=NUMBER_OF_CORES_GAUSSAIN,
@@ -105,7 +120,7 @@ class Scheduler:
         result = subprocess.run([self.submit_command, job_script_path.name, com_file.name], capture_output=True, text=True, cwd=cwd)
 
         if result.returncode != 0:
-            raise RuntimeError(f"Failed to submit job: {result.stderr}")
+            raise SubmissionFailedException(f"Failed to submit job: {result.stderr}")
         job_id = result.stdout.strip().split()[-1]
         job_script_path.unlink()
         return job_id
@@ -117,7 +132,6 @@ class Scheduler:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
         
     def remote_connect(self, target: str) -> None:
-        print(f"Connecting to {target}...")
         if self.scheduler_type == SchedulerType.SLURM:
             try:
                 subprocess.run(["ssh", target], check=True)
@@ -127,7 +141,6 @@ class Scheduler:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
         
     def remote_disconnect(self) -> None:
-        print(f"Disconnecting...")
         if self.scheduler_type == SchedulerType.SLURM:
             try:
                 subprocess.run(["exit"], check=True)
@@ -137,12 +150,11 @@ class Scheduler:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
         
     def run_remote_command(self, target: str, command: str) -> None:
-        print(f"Running command on {target}: {command}")
         if self.scheduler_type == SchedulerType.SLURM:
             try:
                 subprocess.run(["ssh", target, command], check=True)
             except subprocess.CalledProcessError:
-                raise RuntimeError(f"Failed to run command on {target}: {command}")
+                raise RemoteExecutionException(f"Failed to run command on {target}: {command}.")
         else:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
     
@@ -152,6 +164,6 @@ class Scheduler:
             try:
                 subprocess.run(["rsync", "-avz", file, f"{remote_host}:{remote_path}"])
             except subprocess.CalledProcessError:
-                raise RuntimeError(f"Failed to transfer file {file} to {remote_path}")
+                raise RemoteExecutionException(f"Failed to transfer file {file} to {remote_path}.")
         else:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")

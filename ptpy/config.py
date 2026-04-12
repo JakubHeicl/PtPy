@@ -8,11 +8,14 @@ METADATA_FILE: Path = Path("metadata.json")
 RUN_FOLDER: Path = Path("runs")
 BASES_FOLDER: Path = Path(PACKAGE_ROOT, "bases")
 
+LOOP_SLEEP_TIME = 60 # in seconds
+
 LANL_EXTENSION = "lanl"
 DZ_EXTENSION = "dz" 
 
 AIM_CLUSTER = "heiclj@jupiter.karlov.mff.cuni.cz"
 AIM_FOLDER = "/Volumes/Home_2/Users_Ju/heiclj/ptpy_aim_calc"
+MAX_RUNNING_AIM = 4
 
 SCHEDULER = "slurm" # Options: "slurm", "local", "pbs"
 PARTITION = "q_kchfo"

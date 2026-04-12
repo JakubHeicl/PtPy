@@ -71,6 +71,7 @@ class StepStatus(Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    NOT_SUBMITED = "not_submitted"
 
 @dataclass
 class CalculationStep:
