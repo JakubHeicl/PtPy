@@ -1,6 +1,6 @@
+from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
-from __future__ import annotations
 from enum import Enum
 import json
 
