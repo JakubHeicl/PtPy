@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 
 from .scripts import spust_g16_script
-from .config import SCHEDULER, PARTITION, NUMBER_OF_CORES, MEMORY, USER
+from .config import SCHEDULER, PARTITION, NUMBER_OF_CORES_GAUSSAIN, MEMORY, USER
 
 class SchedulerType(Enum):
     SLURM = "slurm"
@@ -90,7 +90,7 @@ class Scheduler:
             raise RuntimeError("No available nodes to submit the job.")
 
         job_script = spust_g16_script.substitute(
-            num_cpus=NUMBER_OF_CORES,
+            num_cpus=NUMBER_OF_CORES_GAUSSAIN,
             job_name=com_file.stem,
             memory=MEMORY,
             chk_file=chk_file.name,

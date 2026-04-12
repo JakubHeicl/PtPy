@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
 from pathlib import Path
+from __future__ import annotations
 from enum import Enum
+import json
 
 from .utils import _SYMBOLS
+from .config import METADATA_FILE
 
 @dataclass
 class Atom:
@@ -75,6 +78,7 @@ class CalculationStep:
     status: StepStatus
     folder: Path
     remote_folder: Path | None = None
+    remote_fchk_file: Path | None = None
     input_file: Path | None = None
     log_file: Path | None = None
     chk_file: Path | None = None
@@ -91,6 +95,7 @@ class CalculationStep:
             "log_file": str(self.log_file) if self.log_file is not None else None,
             "chk_file": str(self.chk_file) if self.chk_file is not None else None,
             "fchk_file": str(self.fchk_file) if self.fchk_file is not None else None,
+            "remote_fchk_file": str(self.remote_fchk_file) if self.remote_fchk_file is not None else None,
         }
 
     @classmethod
@@ -105,9 +110,8 @@ class CalculationStep:
             log_file=Path(data["log_file"]) if data.get("log_file") is not None else None,
             chk_file=Path(data["chk_file"]) if data.get("chk_file") is not None else None,
             fchk_file=Path(data["fchk_file"]) if data.get("fchk_file") is not None else None,
+            remote_fchk_file=Path(data["remote_fchk_file"]) if data.get("remote_fchk_file") is not None else None,
         )
-
-
 
 @dataclass
 class WorkflowCase:
@@ -116,7 +120,9 @@ class WorkflowCase:
     input_file: Path
     charge: int
     multiplicity: int
+
     last_geometry: Geometry | None = None
+    repository: Repository | None = None
     steps: list[CalculationStep] = field(default_factory=list)
     current_step_index: int = 0
     terminated: bool = False
@@ -170,3 +176,56 @@ class WorkflowCase:
             self.current_step_index += 1
         else:
             self.terminated = True
+
+    def get_repository(self) -> Repository | None:
+        return self.repository
+
+@dataclass
+class Repository:
+    cases: list[WorkflowCase] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
+
+    def add_case(self, case: WorkflowCase):
+        if self.get_case_by_name(case.name) is not None:
+            print(f"Case with name {case.name} already exists in the repository. Skipping...")
+            return
+        self.cases.append(case)
+        case.repository = self
+
+    def get_case_by_name(self, name: str) -> WorkflowCase | None:
+        for case in self.cases:
+            if case.name == name:
+                return case
+        return None
+
+    def add_from_json(self, data: dict):
+        self.add_case(WorkflowCase.from_json(data))
+
+    def save_to_folder(self, folder_path: Path):
+
+        if not folder_path.exists():
+            raise RuntimeError(f"Folder {folder_path} does not exist. Cannot save repository.")
+
+        for case in self.cases:
+            case_file = Path(folder_path, case.name).with_suffix(".json")
+            with open(case_file, "w", encoding="utf-8") as f:
+                json.dump(case.to_json(), f, indent=4)
+
+        with open(Path(folder_path, METADATA_FILE), "w", encoding="utf-8") as f:
+            json.dump(self.metadata, f, indent=4)
+
+    def load_from_folder(self, folder_path: Path):
+        if not folder_path.exists():
+            raise RuntimeError(f"Folder {folder_path} does not exist. Cannot load repository.")
+        for case_file in folder_path.glob("*.json"):
+            with open(case_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                self.add_from_json(data)
+
+        metadata_file = Path(folder_path, METADATA_FILE)
+        if metadata_file.exists():
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                self.metadata = json.load(f)
+        else:
+            self.metadata = {}
+

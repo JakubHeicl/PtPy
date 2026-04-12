@@ -6,7 +6,8 @@ from .ir import StepStatus, WorkflowCase, CalculationType
 from .parser import TerminationStatus, get_last_geometry, get_log_termination_status
 from .scheduler import Scheduler
 from .utils import xyz_to_lanl, com_to_lanl, make_dz_file
-from .config import AIM_CLUSTER, AIM_FOLDER, LANL_EXTENSION, DZ_EXTENSION
+from .config import AIM_CLUSTER, AIM_FOLDER, LANL_EXTENSION, DZ_EXTENSION, NUMBER_OF_CORES_AIM
+from .scripts import aim_analysis_script
 
 def run_lanl_optimization(case: WorkflowCase, scheduler: Scheduler):
     current_step = case.get_current_step()
@@ -95,8 +96,15 @@ def run_aim_analysis(case: WorkflowCase, scheduler: Scheduler):
 
     shutil.copy(formchk_file, folder)
     scheduler.transfer_file_to_remote(formchk_file, AIM_CLUSTER, str(remote_folder))
+    
+    current_step.remote_fchk_file = Path(remote_folder, formchk_file.name)
 
-    raise NotImplementedError("AIM analysis step is not implemented yet. This is a placeholder for the actual implementation which would involve running the AIM analysis on the remote cluster and retrieving the results.")
+    scheduler.run_remote_command(AIM_CLUSTER, aim_analysis_script.substitute(folder=remote_folder, 
+                                                                             fchk_file=current_step.remote_fchk_file.name, 
+                                                                             num_cpus=NUMBER_OF_CORES_AIM))
+    
+    current_step.status = StepStatus.RUNNING
+    print(f"Submitted AIM analysis for case {case.name} on cluster {AIM_CLUSTER}.")
 
 def check_optimization(case: WorkflowCase, scheduler: Scheduler):
     
@@ -144,6 +152,9 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler):
         current_step.status = StepStatus.FAILED
         print(f"Error while checking termination status for {current_step.calculation_type.value} of case {case.name}: {e}")
 
+def check_aim_analysis(case: WorkflowCase, scheduler: Scheduler):
+    raise NotImplementedError("Checking AIM analysis is not implemented yet. Please check the cluster job and logs manually.")
+
 CALCULATION_TYPE_TO_RUN_STEP = {
     CalculationType.LANL_OPT: run_lanl_optimization,
     CalculationType.DZ_OPT: run_dz_optimization,
@@ -153,6 +164,7 @@ CALCULATION_TYPE_TO_RUN_STEP = {
 CALCULATION_TYPE_TO_CHECK_STEP = {
     CalculationType.LANL_OPT: check_optimization,
     CalculationType.DZ_OPT: check_optimization,
+    CalculationType.AIM_ANALYSIS: check_aim_analysis,
 }
     
 

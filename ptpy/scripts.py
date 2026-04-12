@@ -1,6 +1,5 @@
 from string import Template
 
-
 spust_g16_script = Template("""#!/bin/bash
 #SBATCH -c ${num_cpus}
 #SBATCH -N 1
@@ -21,6 +20,8 @@ g16 $$1
                                                      
 formchk ${chk_file}
 """)
+
+aim_analysis_script = Template("cd ${folder} && nohup /Applications/QChem/AIMAll/aimqb.app/Contents/MacOS/aimqb -nogui -nproc=${num_cpus} -skipint=true ${fchk_file} > output.log 2>&1 &")
 
 lanl_header = Template("""%mem=${memory}MB
 %nprocshared=${num_cpus}

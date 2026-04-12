@@ -2,8 +2,7 @@ from pathlib import Path
 import shutil
 import time
 
-from .repository import Repository
-from .ir import WorkflowCase, CalculationStep, StepStatus, CalculationType
+from .ir import WorkflowCase, CalculationStep, StepStatus, CalculationType, Repository
 from .config import REPOSITORY_FOLDER, RUN_FOLDER, INPUT_FOLDER, SCHEDULER
 from .utils import get_charge_and_mult_from_com
 from .calculations_steps import CALCULATION_TYPE_TO_CHECK_STEP, CALCULATION_TYPE_TO_RUN_STEP
