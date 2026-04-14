@@ -98,12 +98,9 @@ class CalculationStep:
             "status": self.status.value,
             "job_id": self.job_id,
             "folder": str(self.folder) if self.folder is not None else None,
-            "input_file": str(self.input_file) if self.input_file is not None else None,
-            "log_file": str(self.log_file) if self.log_file is not None else None,
-            "chk_file": str(self.chk_file) if self.chk_file is not None else None,
-            "fchk_file": str(self.fchk_file) if self.fchk_file is not None else None,
             "remote_folder": str(self.remote_folder) if self.remote_folder is not None else None,
-            "remote_fchk_file": str(self.remote_fchk_file) if self.remote_fchk_file is not None else None,
+            "local_files": {key: str(path) for key, path in self.local_files.items()},
+            "remote_files": {key: str(path) for key, path in self.remote_files.items()},
         }
 
     @classmethod
@@ -114,14 +111,11 @@ class CalculationStep:
             status=StepStatus(data["status"]),
             job_id=data.get("job_id"),
             folder=Path(folder) if folder is not None else None,
-            input_file=Path(data["input_file"]) if data.get("input_file") is not None else None,
-            log_file=Path(data["log_file"]) if data.get("log_file") is not None else None,
-            chk_file=Path(data["chk_file"]) if data.get("chk_file") is not None else None,
-            fchk_file=Path(data["fchk_file"]) if data.get("fchk_file") is not None else None,
             remote_folder=Path(data["remote_folder"]) if data.get("remote_folder") is not None else None,
-            remote_fchk_file=Path(data["remote_fchk_file"]) if data.get("remote_fchk_file") is not None else None,
+            local_files={key: Path(path) for key, path in data.get("local_files", {}).items()},
+            remote_files={key: Path(path) for key, path in data.get("remote_files", {}).items()},
         )
-
+    
 @dataclass
 class WorkflowCase:
     name: str
