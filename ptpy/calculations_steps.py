@@ -7,7 +7,7 @@ from .ir import StepStatus, WorkflowCase, CalculationType
 from .parser import FileStatus, get_aim_status, get_last_geometry, get_log_termination_status
 from .scheduler import Scheduler, UnsificientResourcesException, RemoteExecutionException, SubmissionFailedException
 from .utils import xyz_to_lanl, com_to_lanl, make_dz_file, make_ligand_file
-from .config import AIM_CLUSTER, AIM_FOLDER, LANL_EXTENSION, DZ_EXTENSION, LIGAND_EXTENSION, NUMBER_OF_CORES_AIM, MAX_RUNNING_AIM     
+from .config import AIM_CLUSTER, AIM_FOLDER, ALIP_SCRIPT, LANL_EXTENSION, DZ_EXTENSION, LIGAND_EXTENSION, NUMBER_OF_CORES_AIM, MAX_RUNNING_AIM, ALIP_ELSTAT_CLUSTER, ALIP_ELSTAT_FOLDER, POTMIT_EXE, ALIP_EXE ,ELSTAT_SCRIPT, ALIP_SCRIPT  
 from .scripts import aim_analysis_script
 from .logger import Logger
 
@@ -55,15 +55,19 @@ def prepare_dz_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Lo
     name = f"{case.name}_{DZ_EXTENSION}"
     
     folder.mkdir(parents=True, exist_ok=True)
-    dz_com_file = Path(folder, name).with_suffix(".com")
-    dz_chk_file = Path(folder, name).with_suffix(".chk")
-    dz_log_file = Path(folder, name).with_suffix(".log")
+    com_file = Path(folder, name).with_suffix(".com")
+    chk_file = Path(folder, name).with_suffix(".chk")
+    log_file = Path(folder, name).with_suffix(".log")
 
-    make_dz_file(dz_com_file, dz_chk_file, last_geometry.geometry_lines, last_geometry.atoms_symbols, case.charge, case.multiplicity)
+    den_file = Path(folder, name).with_suffix(".den")
+    pot_file = Path(folder, name).with_suffix(".pot")
 
-    current_step.local_files["com"] = dz_com_file
-    current_step.local_files["chk"] = dz_chk_file
-    current_step.local_files["log"] = dz_log_file
+
+    make_dz_file(com_file, chk_file, last_geometry.geometry_lines, last_geometry.atoms_symbols, case.charge, case.multiplicity)
+
+    current_step.local_files["com"] = com_file
+    current_step.local_files["chk"] = chk_file
+    current_step.local_files["log"] = log_file
 
     current_step.status = StepStatus.NOT_SUBMITED
     
@@ -208,6 +212,70 @@ def run_gaussian_calculation(case: WorkflowCase, scheduler: Scheduler, logger: L
     current_step.status = StepStatus.RUNNING
     logger.log(f"Submitted {current_step.calculation_type.value} for case {case.name} with job ID {job_id}.")
 
+def prepare_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+
+    dz_step = case.get_dz_opt_step()
+
+    current_step = case.get_current_step()
+
+    folder = current_step.folder
+    folder.mkdir(parents=True, exist_ok=True)
+
+    if dz_step is None or dz_step.local_files.get("den") is None or dz_step.local_files.get("pot") is None or dz_step.local_files.get("fchk") is None:
+        logger.log(f"Missing required files for {current_step.calculation_type.value} of case {case.name}.")
+        current_step.status = StepStatus.FAILED
+        return
+
+    den_file = dz_step.local_files.get("den")
+    pot_file = dz_step.local_files.get("pot")
+    fchk_file = dz_step.local_files.get("fchk")
+
+    shutil.copy(den_file, folder)
+    shutil.copy(pot_file, folder)
+    shutil.copy(fchk_file, folder)
+
+    current_step.local_files["den"] = Path(folder, den_file.name)
+    current_step.local_files["pot"] = Path(folder, pot_file.name)
+    current_step.local_files["fchk"] = Path(folder, fchk_file.name)
+
+    current_step.remote_folder = Path(ALIP_ELSTAT_FOLDER, case.name)
+
+    current_step.status = StepStatus.NOT_SUBMITED
+
+def run_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+
+    current_step = case.get_current_step()
+
+    remote_folder = current_step.remote_folder
+    den_file = current_step.local_files.get("den")
+    pot_file = current_step.local_files.get("pot")
+    fchk_file = current_step.local_files.get("fchk")
+
+    try:
+        logger.log(f"Running command on {ALIP_ELSTAT_CLUSTER}: mkdir -p {remote_folder}")
+        scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"mkdir -p {remote_folder}")
+        logger.log(f"Transferring file {fchk_file}, {den_file}, {pot_file} to {ALIP_ELSTAT_CLUSTER}:{remote_folder}")
+        scheduler.transfer_file_to_remote(den_file, ALIP_ELSTAT_CLUSTER, str(remote_folder))
+        scheduler.transfer_file_to_remote(pot_file, ALIP_ELSTAT_CLUSTER, str(remote_folder))
+        scheduler.transfer_file_to_remote(fchk_file, ALIP_ELSTAT_CLUSTER, str(remote_folder))
+
+        logger.log(f"Transferring file alip.exe, potmit.exe to {ALIP_ELSTAT_CLUSTER}:{remote_folder}")
+        scheduler.transfer_file_to_remote(ALIP_EXE, ALIP_ELSTAT_CLUSTER, str(remote_folder))
+        scheduler.transfer_file_to_remote(POTMIT_EXE, ALIP_ELSTAT_CLUSTER, str(remote_folder))  
+
+        logger.log(f"Transferring file alip.sh, elstat.sh to {ALIP_ELSTAT_CLUSTER}:{remote_folder}")
+        scheduler.transfer_file_to_remote(ALIP_SCRIPT, ALIP_ELSTAT_CLUSTER, str(remote_folder))
+        scheduler.transfer_file_to_remote(ELSTAT_SCRIPT, ALIP_ELSTAT_CLUSTER, str(remote_folder))
+    except RemoteExecutionException as e:
+        logger.log(f"Failed to run ALIP ELSTAT calculations for case {case.name} on cluster {ALIP_ELSTAT_CLUSTER}: {e} Trying again later...")
+        current_step.status = StepStatus.NOT_SUBMITED
+        return
+
+
+
+
+
+
 def check_gaussian_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
 
     current_step = case.get_current_step()
@@ -304,12 +372,16 @@ def check_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
     elif file_status == FileStatus.RUNNING:
         return
 
+def check_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+
+    pass
 
 CALCULATION_TYPE_TO_PREPARE_STEP = {
     CalculationType.LANL_OPT: prepare_lanl_optimization,
     CalculationType.DZ_OPT: prepare_dz_optimization,
     CalculationType.AIM_ANALYSIS: prepare_aim_analysis,
     CalculationType.LIGAND_ENERGIES_CALCULATION: prepare_ligand_energies,
+    CalculationType.ALIP_ELSTAT_CALCULATION: prepare_alip_elstat_calculation,
 }
 
 CALCULATION_TYPE_TO_RUN_STEP = {
@@ -317,6 +389,7 @@ CALCULATION_TYPE_TO_RUN_STEP = {
     CalculationType.DZ_OPT: run_gaussian_calculation,
     CalculationType.AIM_ANALYSIS: run_aim_analysis,
     CalculationType.LIGAND_ENERGIES_CALCULATION: run_gaussian_calculation,
+    CalculationType.ALIP_ELSTAT_CALCULATION: run_alip_elstat_calculation,
 }
 
 CALCULATION_TYPE_TO_CHECK_STEP = {
@@ -324,6 +397,7 @@ CALCULATION_TYPE_TO_CHECK_STEP = {
     CalculationType.DZ_OPT: check_gaussian_calculation,
     CalculationType.AIM_ANALYSIS: check_aim_analysis,
     CalculationType.LIGAND_ENERGIES_CALCULATION: check_gaussian_calculation,
+    CalculationType.ALIP_ELSTAT_CALCULATION: check_alip_elstat_calculation,
 }
     
 

@@ -242,8 +242,7 @@ class CalculationType(Enum):
     DZ_OPT = "dz_opt"
     AIM_ANALYSIS = "aim_analysis"
     LIGAND_ENERGIES_CALCULATION = "ligand_energies_calculation"
-    ALIP_CALCULATION = "alip_calculation"
-    ELSTAT_CALCULATION = "elstat_calculation"
+    ALIP_ELSTAT_CALCULATION = "alip_elstat_calculation"
 
 class StepStatus(Enum):
     PENDING = "pending"
@@ -343,6 +342,12 @@ class WorkflowCase:
     def get_next_step(self) -> CalculationStep | None:
         if self.current_step_index < len(self.steps) - 1:
             return self.steps[self.current_step_index + 1]
+        return None
+    
+    def get_dz_opt_step(self) -> CalculationStep | None:
+        for step in self.steps:
+            if step.calculation_type == CalculationType.DZ_OPT:
+                return step
         return None
     
     def advance(self):

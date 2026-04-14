@@ -14,8 +14,17 @@ LANL_EXTENSION = "lanl"
 DZ_EXTENSION = "dz" 
 LIGAND_EXTENSION = "ligands"
 
-AIM_CLUSTER = "heiclj@jupiter.karlov.mff.cuni.cz"
-AIM_FOLDER = "/Volumes/Home_2/Users_Ju/heiclj/ptpy_aim_calc"
+AIM_CLUSTER =           "heiclj@jupiter.karlov.mff.cuni.cz"
+ALIP_ELSTAT_CLUSTER =   "heiclj@jupiter.karlov.mff.cuni.cz"
+AIM_FOLDER =            "/Volumes/Home_2/Users_Ju/heiclj/ptpy_calculations/aim"
+ALIP_ELSTAT_FOLDER =    "/Volumes/Home_2/Users_Ju/heiclj/ptpy_calculations/alip_elstat"
+
+POTMIT_EXE = Path(PACKAGE_ROOT, "scripts", "potmit.exe")
+ALIP_EXE = Path(PACKAGE_ROOT, "scripts", "alip.exe")
+
+ELSTAT_SCRIPT = Path(PACKAGE_ROOT, "scripts", "elstat.sh")
+ALIP_SCRIPT = Path(PACKAGE_ROOT, "scripts", "alip.sh")
+
 MAX_RUNNING_AIM = 4
 AIM_WAIT_TIME = 3600 * 2 # in seconds
 
