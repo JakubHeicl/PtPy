@@ -137,6 +137,7 @@ def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler):
     current_step.remote_folder = Path(AIM_FOLDER, case.name)
     remote_folder = current_step.remote_folder
     current_step.remote_files["fchk"] = Path(remote_folder, formchk_file.name)
+    current_step.remote_files["out"] = Path(remote_folder, "output.log")
     shutil.copy(formchk_file, folder)
     current_step.local_files["fchk"] = Path(folder, formchk_file.name)
 
@@ -222,6 +223,9 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
 def check_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
     
     current_step = case.get_current_step()
+    output_file = current_step.remote_files.get("out")
+    
+
 
 
 CALCULATION_TYPE_TO_PREPARE_STEP = {
