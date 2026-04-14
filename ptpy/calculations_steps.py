@@ -244,7 +244,8 @@ def check_gaussian_calculation(case: WorkflowCase, scheduler: Scheduler, logger:
 
             look_for_ligands = True if current_step.calculation_type == CalculationType.DZ_OPT else False
 
-            case.last_geometry = get_last_geometry(current_step.local_files.get("log"), look_for_ligands=look_for_ligands)
+            if current_step.calculation_type in [CalculationType.LANL_OPT, CalculationType.DZ_OPT]:
+                case.last_geometry = get_last_geometry(current_step.local_files.get("log"), look_for_ligands=look_for_ligands)
             slurm_output = Path(current_step.folder, f"slurm-{job_id}.out")
             slurm_output.unlink(missing_ok=True)
             fort_file = Path(current_step.folder, "fort.7")
