@@ -69,6 +69,9 @@ def prepare_dz_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Lo
     current_step.local_files["chk"] = chk_file
     current_step.local_files["log"] = log_file
 
+    current_step.local_files["den"] = den_file
+    current_step.local_files["pot"] = pot_file
+
     current_step.status = StepStatus.NOT_SUBMITED
     
 def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
@@ -246,6 +249,9 @@ def run_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger
 
     current_step = case.get_current_step()
 
+    if current_step.status != StepStatus.NOT_SUBMITED:
+        return
+
     remote_folder = current_step.remote_folder
     den_file = current_step.local_files.get("den")
     pot_file = current_step.local_files.get("pot")
@@ -270,11 +276,6 @@ def run_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger
         logger.log(f"Failed to run ALIP ELSTAT calculations for case {case.name} on cluster {ALIP_ELSTAT_CLUSTER}: {e} Trying again later...")
         current_step.status = StepStatus.NOT_SUBMITED
         return
-
-
-
-
-
 
 def check_gaussian_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
 
