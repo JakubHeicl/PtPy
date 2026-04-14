@@ -54,6 +54,20 @@ def add_to_repository_from_input_folder(repo: Repository, input_folder: Path):
 def proccess_case(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
     current_step = case.get_current_step()
 
+    if current_step.status == StepStatus.NOT_SURE:
+        logger.log(f"Current step {current_step.calculation_type.value} for case {case.name} is in not sure status. Please check the logs and fix the issue before re-running.")
+
+        if not logger.verbose:
+            logger.log("Verbose mode is off, try toggle it on to be able to retry the calculation after fixing the issue.")
+            return
+
+        if logger.reassure("Did the calculation finish successfully after checking the logs and fixing the issue?"):
+            current_step.status = StepStatus.COMPLETED
+            proccess_case(case, scheduler, logger)
+        else:
+            current_step.status = StepStatus.FAILED
+            return
+
     if current_step.status == StepStatus.RUNNING:
         check_step(case, scheduler, logger)
 

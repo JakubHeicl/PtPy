@@ -167,3 +167,25 @@ class Scheduler:
                 raise RemoteExecutionException(f"Failed to transfer file {file} to {remote_path}.")
         else:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
+        
+
+    def transfer_file_from_remote(self, remote_host: str, remote_path: str, local_path: Path) -> None:
+
+        print(f"Transferring file {remote_host}:{remote_path} to {local_path}...")
+        if self.scheduler_type == SchedulerType.SLURM:
+            try:
+                subprocess.run(["rsync", "-avz", f"{remote_host}:{remote_path}", local_path], check=True)
+            except subprocess.CalledProcessError:
+                raise RemoteExecutionException(f"Failed to transfer file {remote_path} from {remote_host}.")
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
+        
+    def does_remote_file_exist(self, remote_host: str, remote_path: str) -> bool:
+        if self.scheduler_type == SchedulerType.SLURM:
+            try:
+                result = subprocess.run(["ssh", remote_host, "test", "-e", remote_path], check=True)
+                return result.returncode == 0
+            except subprocess.CalledProcessError:
+                return False
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")

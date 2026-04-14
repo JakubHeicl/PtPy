@@ -16,6 +16,7 @@ DZ_EXTENSION = "dz"
 AIM_CLUSTER = "heiclj@jupiter.karlov.mff.cuni.cz"
 AIM_FOLDER = "/Volumes/Home_2/Users_Ju/heiclj/ptpy_aim_calc"
 MAX_RUNNING_AIM = 4
+AIM_WAIT_TIME = 3600 * 2 # in seconds
 
 SCHEDULER = "slurm" # Options: "slurm", "local", "pbs"
 PARTITION = "q_kchfo"

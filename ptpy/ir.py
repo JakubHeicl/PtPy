@@ -70,6 +70,7 @@ class StepStatus(Enum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
+    NOT_SURE = "not_sure"
     FAILED = "failed"
     NOT_SUBMITED = "not_submitted"
 

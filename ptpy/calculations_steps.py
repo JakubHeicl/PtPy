@@ -3,7 +3,7 @@ import time
 import shutil
 
 from .ir import StepStatus, WorkflowCase, CalculationType
-from .parser import TerminationStatus, get_last_geometry, get_log_termination_status
+from .parser import FileStatus, get_aim_status, get_last_geometry, get_log_termination_status
 from .scheduler import Scheduler, UnsificientResourcesException, RemoteExecutionException, SubmissionFailedException
 from .utils import xyz_to_lanl, com_to_lanl, make_dz_file
 from .config import AIM_CLUSTER, AIM_FOLDER, LANL_EXTENSION, DZ_EXTENSION, NUMBER_OF_CORES_AIM, MAX_RUNNING_AIM     
@@ -191,7 +191,7 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
 
     if not formchk_file.exists():
         logger.log(f"Formchk file {formchk_file} for {current_step.calculation_type.value} of case {case.name} might still not be ready. Waiting...")
-        time.sleep(5)
+        time.sleep(10)
         if not formchk_file.exists():
             logger.log(f"Formchk file {formchk_file} for {current_step.calculation_type.value} of case {case.name} is still not available after waiting. Marking as failed.")
             current_step.status = StepStatus.FAILED
@@ -199,13 +199,13 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
 
     while formchk_file.stat().st_mtime + 15 > time.time():
         logger.log(f"Formchk file {formchk_file} for {current_step.calculation_type.value} of case {case.name} might still not be ready. Waiting...")
-        time.sleep(2)
+        time.sleep(10)
 
     current_step.local_files["fchk"] = formchk_file
 
     try:
         termination_status = get_log_termination_status(case)
-        if termination_status == TerminationStatus.SUCCESS:
+        if termination_status == FileStatus.SUCCESS:
             current_step.status = StepStatus.COMPLETED
             case.last_geometry = get_last_geometry(current_step.local_files.get("log"))
             slurm_output = Path(current_step.folder, f"slurm-{job_id}.out")
@@ -224,8 +224,44 @@ def check_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
     
     current_step = case.get_current_step()
     output_file = current_step.remote_files.get("out")
-    
 
+    folder = current_step.folder
+
+    current_step.local_files["out"] = Path(folder, "output.log")
+    try:
+        scheduler.transfer_file_from_remote(AIM_CLUSTER, str(output_file), folder)
+    except RemoteExecutionException as e:
+        logger.log(f"Error while transferring AIM output file for case {case.name}: {e}. Trying again later...")
+        return
+    
+    file_status = get_aim_status(current_step.local_files["out"])
+
+    if file_status == FileStatus.SUCCESS:
+        if not scheduler.does_remote_file_exist(current_step.remote_files.get("fchk").with_suffix(".sum")):
+            logger.log(f"AIM output file for case {case.name} indicates success, but summary file is missing. Marking as not sure for now.")
+            current_step.status = StepStatus.NOT_SURE
+            return
+        try:
+            scheduler.transfer_file_from_remote(AIM_CLUSTER, str(current_step.remote_files.get("fchk").with_suffix(".sum")), folder)
+            scheduler.transfer_file_from_remote(AIM_CLUSTER, str(current_step.remote_files.get("fchk").with_suffix(".wfx")), folder)
+            scheduler.run_remote_command(AIM_CLUSTER, f"rm -rf {current_step.remote_folder}")
+        except RemoteExecutionException as e:
+            logger.log(f"Error while transferring AIM result files for case {case.name}: {e}. Trying again later...")
+            return
+        current_step.local_files["sum"] = current_step.local_files["fchk"].with_suffix(".sum")
+        current_step.local_files["wfx"] = current_step.local_files["fchk"].with_suffix(".wfx")
+        current_step.status = StepStatus.COMPLETED
+        case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) - 1
+        logger.log(f"AIM analysis for case {case.name} completed successfully.")
+    elif file_status == FileStatus.NOT_SURE:
+        logger.log(f"AIM analysis for case {case.name} is running for a long time. Please check the output log for details. Marking as not sure for now.")
+        current_step.status = StepStatus.NOT_SURE
+        return
+    elif file_status == FileStatus.FAILURE:
+        current_step.status = StepStatus.FAILED
+        logger.log(f"AIM analysis for case {case.name} failed. Please check the logs for details.")
+    elif file_status == FileStatus.RUNNING:
+        return
 
 
 CALCULATION_TYPE_TO_PREPARE_STEP = {
