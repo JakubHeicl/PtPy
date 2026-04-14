@@ -62,13 +62,21 @@ class Atom:
 @dataclass
 class Geometry:
     atoms: list[Atom]
+    look_for_ligands: bool = False
     pt_neighbors: list[Atom] | None = None
     ligands: list[set[Atom]] | None = None
     ligand_charges: list[int] | None = None 
 
     def __post_init__(self):
-        if self.pt_neighbors is None: self.pt_neighbors = self.find_neighbors(self.get_Pt_atom(), num_neighbors=6, for_Pt=True)
-        if self.ligands is None: self.ligands = self.find_ligands()
+        if self.pt_neighbors is None and self.look_for_ligands: 
+            self.pt_neighbors = self.find_neighbors(self.get_Pt_atom(), num_neighbors=6, for_Pt=True)
+        if self.ligands is None and self.look_for_ligands: 
+            ligands = self.find_ligands()
+
+            if ligands is None:
+                raise RuntimeError("Failed to automatically find ligands, please specify them manually.")
+
+            self.ligands = ligands
 
     def to_json(self) -> dict:
         return {
