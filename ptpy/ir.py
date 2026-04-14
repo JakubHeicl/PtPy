@@ -79,12 +79,18 @@ class CalculationStep:
     status: StepStatus
     folder: Path
     remote_folder: Path | None = None
-    remote_fchk_file: Path | None = None
+
+    local_files: dict[str, Path] = field(default_factory=dict)
+    remote_files: dict[str, Path] = field(default_factory=dict)
+
+    job_id: str | None = None
+    """
     input_file: Path | None = None
+    remote_fchk_file: Path | None = None
     log_file: Path | None = None
     chk_file: Path | None = None
     fchk_file: Path | None = None
-    job_id: str | None = None
+    """
 
     def to_json(self) -> dict:
         return {

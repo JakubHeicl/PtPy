@@ -22,20 +22,20 @@ def prepare_lanl_optimization(case: WorkflowCase, scheduler: Scheduler):
     name = f"{case.name}_{LANL_EXTENSION}"
 
     folder.mkdir(parents=True, exist_ok=True)
-    lanl_input_file = Path(folder, name).with_suffix(".com")
+    lanl_com_file = Path(folder, name).with_suffix(".com")
     lanl_chk_file = Path(folder, name).with_suffix(".chk")
-    lanl_output_file = Path(folder, name).with_suffix(".log")
+    lanl_log_file = Path(folder, name).with_suffix(".log")
 
     if input_file.suffix == ".xyz":
-        xyz_to_lanl(input_file, lanl_input_file, lanl_chk_file, case.charge, case.multiplicity)
+        xyz_to_lanl(input_file, lanl_com_file, lanl_chk_file, case.charge, case.multiplicity)
     elif input_file.suffix == ".com":
-        com_to_lanl(input_file, lanl_input_file, lanl_chk_file)
+        com_to_lanl(input_file, lanl_com_file, lanl_chk_file)
     else:
         raise ValueError(f"Unsupported input file format: {input_file.suffix}")
     
-    current_step.input_file = lanl_input_file
-    current_step.chk_file = lanl_chk_file
-    current_step.log_file = lanl_output_file
+    current_step.local_files["com"] = lanl_com_file
+    current_step.local_files["chk"] = lanl_chk_file
+    current_step.local_files["log"] = lanl_log_file
 
     current_step.status = StepStatus.NOT_SUBMITED
 
@@ -43,8 +43,8 @@ def run_lanl_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logg
 
     current_step = case.get_current_step()
     folder = current_step.folder
-    lanl_input_file = current_step.input_file
-    lanl_chk_file = current_step.chk_file
+    lanl_input_file = current_step.local_files.get("com")
+    lanl_chk_file = current_step.local_files.get("chk")
 
     try:
         job_id = scheduler.submit_job(folder, lanl_input_file, lanl_chk_file)
@@ -81,15 +81,15 @@ def prepare_dz_optimization(case: WorkflowCase, scheduler: Scheduler):
     name = f"{case.name}_{DZ_EXTENSION}"
     
     folder.mkdir(parents=True, exist_ok=True)
-    dz_input_file = Path(folder, name).with_suffix(".com")
+    dz_com_file = Path(folder, name).with_suffix(".com")
     dz_chk_file = Path(folder, name).with_suffix(".chk")
-    dz_output_file = Path(folder, name).with_suffix(".log")
+    dz_log_file = Path(folder, name).with_suffix(".log")
 
-    make_dz_file(dz_input_file, dz_chk_file, last_geometry.geometry_lines, last_geometry.atoms_symbols, case.charge, case.multiplicity)
+    make_dz_file(dz_com_file, dz_chk_file, last_geometry.geometry_lines, last_geometry.atoms_symbols, case.charge, case.multiplicity)
 
-    current_step.input_file = dz_input_file
-    current_step.chk_file = dz_chk_file
-    current_step.log_file = dz_output_file
+    current_step.local_files["com"] = dz_com_file
+    current_step.local_files["chk"] = dz_chk_file
+    current_step.local_files["log"] = dz_log_file
 
     current_step.status = StepStatus.NOT_SUBMITED
 
@@ -97,8 +97,8 @@ def run_dz_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger
 
     current_step = case.get_current_step()
     folder = current_step.folder
-    dz_input_file = current_step.input_file
-    dz_chk_file = current_step.chk_file
+    dz_input_file = current_step.local_files.get("com")
+    dz_chk_file = current_step.local_files.get("chk")
 
     try:
         job_id = scheduler.submit_job(folder, dz_input_file, dz_chk_file)
@@ -130,15 +130,15 @@ def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler):
     if previous_step.calculation_type != CalculationType.DZ_OPT:
         raise ValueError(f"Expected previous step to be DZ OPTIMIZATION, got {previous_step.calculation_type}.")
     
-    formchk_file = previous_step.fchk_file
+    formchk_file = previous_step.local_files.get("fchk")
 
     folder = current_step.folder
     folder.mkdir(parents=True, exist_ok=True)
     current_step.remote_folder = Path(AIM_FOLDER, case.name)
     remote_folder = current_step.remote_folder
-    current_step.remote_fchk_file = Path(remote_folder, formchk_file.name)
+    current_step.remote_files["fchk"] = Path(remote_folder, formchk_file.name)
     shutil.copy(formchk_file, folder)
-    current_step.fchk_file = Path(folder, formchk_file.name)
+    current_step.local_files["fchk"] = Path(folder, formchk_file.name)
 
     current_step.status = StepStatus.NOT_SUBMITED
 
@@ -152,11 +152,11 @@ def run_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
         return
 
     remote_folder = current_step.remote_folder
-    formchk_file = current_step.fchk_file
-    
+    formchk_file = current_step.local_files.get("fchk")
+
     try:
 
-        aim_script = aim_analysis_script.substitute(folder=remote_folder, fchk_file=current_step.remote_fchk_file.name, num_cpus=NUMBER_OF_CORES_AIM)
+        aim_script = aim_analysis_script.substitute(folder=remote_folder, fchk_file=current_step.remote_files.get("fchk").name, num_cpus=NUMBER_OF_CORES_AIM)
 
         logger.log(f"Running command on {AIM_CLUSTER}: mkdir -p {remote_folder}")
         scheduler.run_remote_command(AIM_CLUSTER, f"mkdir -p {remote_folder}")
@@ -186,7 +186,7 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
     if scheduler.is_job_running(job_id):
         return
     
-    formchk_file = current_step.input_file.with_suffix(".fchk")
+    formchk_file = current_step.local_files.get("com").with_suffix(".fchk")
 
     if not formchk_file.exists():
         logger.log(f"Formchk file {formchk_file} for {current_step.calculation_type.value} of case {case.name} might still not be ready. Waiting...")
@@ -200,13 +200,13 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
         logger.log(f"Formchk file {formchk_file} for {current_step.calculation_type.value} of case {case.name} might still not be ready. Waiting...")
         time.sleep(2)
 
-    current_step.fchk_file = formchk_file
+    current_step.local_files["fchk"] = formchk_file
 
     try:
         termination_status = get_log_termination_status(case)
         if termination_status == TerminationStatus.SUCCESS:
             current_step.status = StepStatus.COMPLETED
-            case.last_geometry = get_last_geometry(current_step.log_file)
+            case.last_geometry = get_last_geometry(current_step.local_files.get("log"))
             slurm_output = Path(current_step.folder, f"slurm-{job_id}.out")
             slurm_output.unlink(missing_ok=True)
             fort_file = Path(current_step.folder, "fort.7")
@@ -220,7 +220,9 @@ def check_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
         logger.log(f"Error while checking termination status for {current_step.calculation_type.value} of case {case.name}: {e}")
 
 def check_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
-    pass
+    
+    current_step = case.get_current_step()
+
 
 CALCULATION_TYPE_TO_PREPARE_STEP = {
     CalculationType.LANL_OPT: prepare_lanl_optimization,
