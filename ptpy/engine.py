@@ -150,10 +150,10 @@ def show_status(verbose: bool = True, log_file: Path | None = None):
     repo.load_from_folder(REPOSITORY_FOLDER)
 
     for case in repo.cases:
-        message = f"Case: {case.name} is finished: {case.terminated}"
+        message = f"Case: {case.name:20s} is finished: {case.terminated}"
         if not case.terminated:
             current_step = case.get_current_step()
-            message += f" | Current step: {current_step.calculation_type.value} - {current_step.status.value}"
+            message += f" | Current step: {current_step.calculation_type.value:20s} - {current_step.status.value:10s}"
         logger.log(message)
 
 def restore(verbose: bool = True, log_file: Path | None = None):
