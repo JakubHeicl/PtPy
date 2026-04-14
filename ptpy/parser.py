@@ -11,7 +11,7 @@ def get_log_termination_status(case: WorkflowCase) -> TerminationStatus:
     
     current_step = case.get_current_step()
 
-    log_file = current_step.log_file
+    log_file = current_step.local_files.get("log")
 
     if log_file is None or not log_file.exists():
         raise RuntimeError(f"Log file for case {case.name} does not exist. Cannot determine termination status.")
