@@ -311,7 +311,7 @@ def run_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger
 
         logger.log(f"Running ALIP ELSTAT script on {ALIP_ELSTAT_CLUSTER} for case {case.name}")
         scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"cd {remote_folder} && chmod a+x alip.sh elstat.sh")
-        scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"cd {remote_folder} && chmod a+x potmit.exe alip.exe")
+        scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"cd {remote_folder} && chmod a+x potmin.exe alip.exe")
 
         scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"cd {remote_folder} && ./elstat.sh")
         scheduler.run_remote_background_command(ALIP_ELSTAT_CLUSTER, f"/bin/bash -lc 'cd {remote_folder} && nohup ./alip.sh'")
