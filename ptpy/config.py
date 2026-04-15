@@ -32,7 +32,7 @@ MAX_AIM_TIME = 3600 * 4 # in seconds
 
 SCHEDULER = "slurm" # Options: "slurm", "local", "pbs"
 PARTITION = "q_kchfo"
-NUMBER_OF_CORES_GAUSSAIN = 16
+NUMBER_OF_CORES_GAUSSAIN = 32
 MEMORY = 4000 # in MB   
 
 NUMBER_OF_CORES_AIM = 4
