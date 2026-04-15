@@ -143,7 +143,7 @@ def run(verbose: bool = True, log_file: Path | None = None, loop: bool = False, 
         repo.load_from_folder(REPOSITORY_FOLDER)
         add_to_repository_from_input_folder(repo, INPUT_FOLDER)
 
-        for case in repo.cases:
+        for case in tqdm(repo.cases, desc="Processing cases"):
             proccess_case(case, scheduler, logger)
 
         repo.save_to_folder(REPOSITORY_FOLDER)
