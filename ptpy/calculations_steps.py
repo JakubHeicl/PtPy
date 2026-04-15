@@ -7,7 +7,7 @@ from .ir import StepStatus, WorkflowCase, CalculationType
 from .parser import FileStatus, get_aim_status, get_last_geometry, get_log_termination_status
 from .scheduler import Scheduler, UnsificientResourcesException, RemoteExecutionException, SubmissionFailedException
 from .utils import xyz_to_lanl, com_to_lanl, make_dz_file, make_ligand_file
-from .config import AIM_CLUSTER, AIM_FOLDER, ALIP_SCRIPT, LANL_EXTENSION, DZ_EXTENSION, LIGAND_EXTENSION, NUMBER_OF_CORES_AIM, MAX_RUNNING_AIM, ALIP_ELSTAT_CLUSTER, ALIP_ELSTAT_FOLDER, POTMIT_EXE, ALIP_EXE ,ELSTAT_SCRIPT, ALIP_SCRIPT  
+from .config import AIM_CLUSTER, AIM_FOLDER, ALIP_SCRIPT, CONFIG_ALIP, LANL_EXTENSION, DZ_EXTENSION, LIGAND_EXTENSION, MAX_AIM_TIME, MAX_ALIP_TIME, NUMBER_OF_CORES_AIM, MAX_RUNNING_AIM, ALIP_ELSTAT_CLUSTER, ALIP_ELSTAT_FOLDER, POTMIT_EXE, ALIP_EXE ,ELSTAT_SCRIPT, ALIP_SCRIPT  
 from .scripts import aim_analysis_script
 from .logger import Logger
 
@@ -34,7 +34,10 @@ def prepare_lanl_optimization(case: WorkflowCase, scheduler: Scheduler, logger: 
     else:
         raise ValueError(f"Unsupported input file format: {input_file.suffix}")
     
+    #Local files that will be used for LANL optimization
     current_step.local_files["com"] = lanl_com_file
+
+    #Local files that are expected to be generated
     current_step.local_files["chk"] = lanl_chk_file
     current_step.local_files["log"] = lanl_log_file
 
@@ -65,10 +68,12 @@ def prepare_dz_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Lo
 
     make_dz_file(com_file, chk_file, last_geometry.geometry_lines, last_geometry.atoms_symbols, case.charge, case.multiplicity)
 
+    #Local files that will be used for DZ optimization
     current_step.local_files["com"] = com_file
+
+    #Local files that are expected to be generated
     current_step.local_files["chk"] = chk_file
     current_step.local_files["log"] = log_file
-
     current_step.local_files["den"] = den_file
     current_step.local_files["pot"] = pot_file
 
@@ -88,9 +93,9 @@ def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logge
     if previous_step.calculation_type != CalculationType.DZ_OPT:
         raise ValueError(f"Expected previous step to be DZ OPTIMIZATION, got {previous_step.calculation_type}.")
     
-    formchk_file = previous_step.local_files.get("fchk")
+    dz_fchk_file = previous_step.local_files.get("fchk")
 
-    if formchk_file is None or not formchk_file.exists():
+    if dz_fchk_file is None or not dz_fchk_file.exists():
         logger.log(f"Formchk file from previous DZ optimization step is not available for case {case.name}. Cannot prepare AIM analysis.")
         current_step.status = StepStatus.FAILED
         return
@@ -98,11 +103,24 @@ def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logge
     folder = current_step.folder
     folder.mkdir(parents=True, exist_ok=True)
     current_step.remote_folder = Path(AIM_FOLDER, case.name)
-    remote_folder = current_step.remote_folder
-    current_step.remote_files["fchk"] = Path(remote_folder, formchk_file.name)
-    current_step.remote_files["out"] = Path(remote_folder, "output.log")
-    shutil.copy(formchk_file, folder)
-    current_step.local_files["fchk"] = Path(folder, formchk_file.name)
+
+    shutil.copy(dz_fchk_file, folder)
+
+    #Local file that will be transferred to be used for AIM analysis
+    current_step.local_files["fchk"] = Path(folder, dz_fchk_file.name)
+
+    #Local files that are expected to be generated and then transferred
+    current_step.local_files["sum"] = current_step.local_files["fchk"].with_suffix(".sum")
+    current_step.local_files["wfx"] = current_step.local_files["fchk"].with_suffix(".wfx")
+    current_step.local_files["out"] = Path(folder, "output.log")
+
+    #Remote files that will be transferred to be used for AIM analysis
+    current_step.remote_files["fchk"] = Path(current_step.remote_folder, dz_fchk_file.name)
+
+    #Remote files, that are expected to be generated
+    current_step.remote_files["sum"] = current_step.remote_files.get("fchk").with_suffix(".sum")
+    current_step.remote_files["wfx"] = current_step.remote_files.get("fchk").with_suffix(".wfx")
+    current_step.remote_files["out"] = Path(current_step.remote_folder, "output.log")
 
     current_step.status = StepStatus.NOT_SUBMITED
 
@@ -133,6 +151,7 @@ def run_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
         current_step.status = StepStatus.NOT_SUBMITED
         return
     
+    current_step.start_time = int(time.time())
     current_step.status = StepStatus.RUNNING
     case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) + 1
     logger.log(f"Submitted AIM analysis for case {case.name} on cluster {AIM_CLUSTER}.")
@@ -182,7 +201,10 @@ def prepare_ligand_energies(case: WorkflowCase, scheduler: Scheduler, logger: Lo
 
     make_ligand_file(com_file, chk_file, geometry, case.charge, case.multiplicity)
 
+    #Local files that will be used for ligand energies calculation
     current_step.local_files["com"] = com_file
+
+    #Local files that are expected to be generated
     current_step.local_files["chk"] = chk_file
     current_step.local_files["log"] = log_file
 
@@ -223,6 +245,7 @@ def prepare_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, lo
 
     folder = current_step.folder
     folder.mkdir(parents=True, exist_ok=True)
+    current_step.remote_folder = Path(ALIP_ELSTAT_FOLDER, case.name)
 
     if dz_step is None or dz_step.local_files.get("den") is None or dz_step.local_files.get("pot") is None or dz_step.local_files.get("fchk") is None:
         logger.log(f"Missing required files for {current_step.calculation_type.value} of case {case.name}.")
@@ -237,11 +260,23 @@ def prepare_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, lo
     shutil.copy(pot_file, folder)
     shutil.copy(fchk_file, folder)
 
+    #Local files that will be transferred to be used for ALIP ELSTAT calculation
     current_step.local_files["den"] = Path(folder, den_file.name)
     current_step.local_files["pot"] = Path(folder, pot_file.name)
     current_step.local_files["fchk"] = Path(folder, fchk_file.name)
 
-    current_step.remote_folder = Path(ALIP_ELSTAT_FOLDER, case.name)
+    #Local files that will be transferred to be used for ALIP ELSTAT calculation
+    current_step.remote_files["den"] = Path(current_step.remote_folder, den_file.name)
+    current_step.remote_files["pot"] = Path(current_step.remote_folder, pot_file.name)
+    current_step.remote_files["fchk"] = Path(current_step.remote_folder, fchk_file.name)
+
+    #Remote files, that are expected to be generated
+    current_step.remote_files["exa"] = Path(current_step.remote_folder, den_file.with_suffix(".exa-s").name)
+    current_step.remote_files["exp"] = Path(current_step.remote_folder, den_file.with_suffix(".exp-s").name)
+
+    #Local files that are expected to be generated and then transferred
+    current_step.local_files["exa"] = Path(folder, den_file.with_suffix(".exa-s").name)
+    current_step.local_files["exp"] = Path(folder, den_file.with_suffix(".exp-s").name)
 
     current_step.status = StepStatus.NOT_SUBMITED
 
@@ -269,13 +304,26 @@ def run_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger
         scheduler.transfer_file_to_remote(ALIP_EXE, ALIP_ELSTAT_CLUSTER, str(remote_folder))
         scheduler.transfer_file_to_remote(POTMIT_EXE, ALIP_ELSTAT_CLUSTER, str(remote_folder))  
 
-        logger.log(f"Transferring file alip.sh, elstat.sh to {ALIP_ELSTAT_CLUSTER}:{remote_folder}")
+        logger.log(f"Transferring file alip.sh, elstat.sh and config to {ALIP_ELSTAT_CLUSTER}:{remote_folder}")
         scheduler.transfer_file_to_remote(ALIP_SCRIPT, ALIP_ELSTAT_CLUSTER, str(remote_folder))
         scheduler.transfer_file_to_remote(ELSTAT_SCRIPT, ALIP_ELSTAT_CLUSTER, str(remote_folder))
+        scheduler.transfer_file_to_remote(CONFIG_ALIP, ALIP_ELSTAT_CLUSTER, str(remote_folder))
+
+        logger.log(f"Running ALIP ELSTAT script on {ALIP_ELSTAT_CLUSTER} for case {case.name}")
+        scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"cd {remote_folder} && chmod a+x alip.sh elstat.sh")
+        scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"cd {remote_folder} && chmod a+x potmit.exe alip.exe")
+
+        scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"cd {remote_folder} && ./elstat.sh")
+        scheduler.run_remote_background_command(ALIP_ELSTAT_CLUSTER, f"/bin/bash -lc 'cd {remote_folder} && nohup ./alip.sh'")
+
     except RemoteExecutionException as e:
         logger.log(f"Failed to run ALIP ELSTAT calculations for case {case.name} on cluster {ALIP_ELSTAT_CLUSTER}: {e} Trying again later...")
         current_step.status = StepStatus.NOT_SUBMITED
         return
+    
+    current_step.start_time = int(time.time())
+    current_step.status = StepStatus.RUNNING
+    logger.log(f"Submitted ALIP ELSTAT calculations for case {case.name} on cluster {ALIP_ELSTAT_CLUSTER}.")
 
 def check_gaussian_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
 
@@ -328,54 +376,52 @@ def check_gaussian_calculation(case: WorkflowCase, scheduler: Scheduler, logger:
         logger.log(f"Error while checking termination status for {current_step.calculation_type.value} of case {case.name}: {e}")
 
 def check_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
-    
+
     current_step = case.get_current_step()
     output_file = current_step.remote_files.get("out")
+    sum_file = current_step.remote_files.get("sum")
+    wfx_file = current_step.remote_files.get("wfx")
 
-    folder = current_step.folder
-
-    current_step.local_files["out"] = Path(folder, "output.log")
     try:
-        scheduler.transfer_file_from_remote(AIM_CLUSTER, str(output_file), folder)
-    except RemoteExecutionException as e:
-        logger.log(f"Error while transferring AIM output file for case {case.name}: {e}. Trying again later...")
-        return
-    
-    file_status = get_aim_status(current_step.local_files["out"])
-
-    if file_status == FileStatus.SUCCESS:
-        if not scheduler.does_remote_file_exist(AIM_CLUSTER, current_step.remote_files.get("fchk").with_suffix(".sum")):
-            logger.log(f"AIM output file for case {case.name} indicates success, but summary file is missing. Marking as not sure for now.")
-            current_step.status = StepStatus.NOT_SURE
+        if scheduler.does_remote_file_exist(AIM_CLUSTER, output_file) and scheduler.does_remote_file_exist(AIM_CLUSTER, sum_file) and scheduler.does_remote_file_exist(AIM_CLUSTER, wfx_file):
+            if scheduler.does_remote_file_contain(AIM_CLUSTER, output_file, "AIMQB Job Completed"):
+                scheduler.transfer_file_from_remote(AIM_CLUSTER, str(output_file), current_step.folder)
+                scheduler.transfer_file_from_remote(AIM_CLUSTER, str(sum_file), current_step.folder)
+                scheduler.transfer_file_from_remote(AIM_CLUSTER, str(wfx_file), current_step.folder)
+                scheduler.run_remote_command(AIM_CLUSTER, f"rm -rf {current_step.remote_folder}")
+                current_step.status = StepStatus.COMPLETED
+                case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) - 1
+                logger.log(f"AIM analysis for case {case.name} completed successfully.")
+        if current_step.start_time and time.time() - current_step.start_time > MAX_AIM_TIME:
             case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) - 1
-            return
-        try:
-            scheduler.transfer_file_from_remote(AIM_CLUSTER, str(current_step.remote_files.get("fchk").with_suffix(".sum")), folder)
-            scheduler.transfer_file_from_remote(AIM_CLUSTER, str(current_step.remote_files.get("fchk").with_suffix(".wfx")), folder)
-            scheduler.run_remote_command(AIM_CLUSTER, f"rm -rf {current_step.remote_folder}")
-        except RemoteExecutionException as e:
-            logger.log(f"Error while transferring AIM result files for case {case.name}: {e}. Trying again later...")
-            return
-        current_step.local_files["sum"] = current_step.local_files["fchk"].with_suffix(".sum")
-        current_step.local_files["wfx"] = current_step.local_files["fchk"].with_suffix(".wfx")
-        current_step.status = StepStatus.COMPLETED
-        case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) - 1
-        logger.log(f"AIM analysis for case {case.name} completed successfully.")
-    elif file_status == FileStatus.NOT_SURE:
-        case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) - 1
-        logger.log(f"AIM analysis for case {case.name} is running for a long time. Please check the output log for details. Marking as not sure for now.")
-        current_step.status = StepStatus.NOT_SURE
-        return
-    elif file_status == FileStatus.FAILURE:
-        case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) - 1
-        current_step.status = StepStatus.FAILED
-        logger.log(f"AIM analysis for case {case.name} failed. Please check the logs for details.")
-    elif file_status == FileStatus.RUNNING:
+            logger.log(f"AIM analysis for case {case.name} is running for a long time. Please check the output log for details. Marking as not sure for now.")
+            current_step.status = StepStatus.NOT_SURE  
+
+    except RemoteExecutionException as e:
+        logger.log(f"Error while checking AIM analysis for case {case.name} on cluster {AIM_CLUSTER}: {e}. Trying again later...")
         return
 
 def check_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
 
-    pass
+    current_step = case.get_current_step()
+    remote_exa_file = current_step.remote_files.get("exa")
+    remote_exp_file = current_step.remote_files.get("exp")
+
+    try:
+        if scheduler.does_remote_file_exist(ALIP_ELSTAT_CLUSTER, remote_exa_file) and scheduler.does_remote_file_exist(ALIP_ELSTAT_CLUSTER, remote_exp_file):
+            if scheduler.get_remote_file_size(ALIP_ELSTAT_CLUSTER, remote_exa_file) > 0 and scheduler.get_remote_file_size(ALIP_ELSTAT_CLUSTER, remote_exp_file) > 0:
+                scheduler.transfer_file_from_remote(ALIP_ELSTAT_CLUSTER, str(remote_exa_file), current_step.folder)
+                scheduler.transfer_file_from_remote(ALIP_ELSTAT_CLUSTER, str(remote_exp_file), current_step.folder)
+                scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"rm -rf {current_step.remote_folder}")
+                current_step.status = StepStatus.COMPLETED
+                logger.log(f"ALIP ELSTAT calculations for case {case.name} completed successfully.")
+        if current_step.start_time and time.time() - current_step.start_time > MAX_ALIP_TIME:
+            current_step.status = StepStatus.NOT_SURE
+            logger.log(f"ALIP ELSTAT calculations for case {case.name} are running for a long time. Please check the output files on cluster {ALIP_ELSTAT_CLUSTER} for details. Marking as not sure for now.")
+
+    except RemoteExecutionException as e:
+        logger.log(f"Error while checking ALIP ELSTAT calculation for case {case.name} on cluster {ALIP_ELSTAT_CLUSTER}: {e}. Trying again later...")        
+        return
 
 CALCULATION_TYPE_TO_PREPARE_STEP = {
     CalculationType.LANL_OPT: prepare_lanl_optimization,

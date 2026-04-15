@@ -3,7 +3,7 @@ from pathlib import Path
 import time
 
 from .ir import WorkflowCase, Geometry, Atom
-from .config import AIM_WAIT_TIME
+from .config import MAX_AIM_TIME
 
 class FileStatus(Enum):
     SUCCESS = "success"
@@ -97,7 +97,7 @@ def get_aim_status(output_file: Path) -> FileStatus:
             if "AIMQB Job Completed" in line:
                 return FileStatus.SUCCESS
             
-    if output_file.stat().st_mtime + AIM_WAIT_TIME > time.time():
+    if output_file.stat().st_mtime + MAX_AIM_TIME > time.time():
         return FileStatus.RUNNING
     
     return FileStatus.NOT_SURE

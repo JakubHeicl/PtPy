@@ -24,9 +24,11 @@ ALIP_EXE = Path(PACKAGE_ROOT, "scripts", "alip.exe")
 
 ELSTAT_SCRIPT = Path(PACKAGE_ROOT, "scripts", "elstat.sh")
 ALIP_SCRIPT = Path(PACKAGE_ROOT, "scripts", "alip.sh")
+CONFIG_ALIP = Path(PACKAGE_ROOT, "scripts", "config")
+MAX_ALIP_TIME = 20 * 60
 
 MAX_RUNNING_AIM = 4
-AIM_WAIT_TIME = 3600 * 2 # in seconds
+MAX_AIM_TIME = 3600 * 4 # in seconds
 
 SCHEDULER = "slurm" # Options: "slurm", "local", "pbs"
 PARTITION = "q_kchfo"

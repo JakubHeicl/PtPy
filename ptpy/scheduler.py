@@ -140,10 +140,11 @@ class Scheduler:
         else:
             raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
         
-    def run_remote_command(self, target: str, command: str) -> None:
+    def run_remote_command(self, target: str, command: str) -> str | None:
         if self.scheduler_type == SchedulerType.SLURM:
             try:
-                subprocess.run(["ssh", "-T", "-n", target, command], check=True)
+                result = subprocess.run(["ssh", "-T", "-n", target, command], check=True, capture_output=True, text=True)
+                return result.stdout if result.stdout else None
             except subprocess.CalledProcessError:
                 raise RemoteExecutionException(f"Failed to run command on {target}: {command}.")
         else:
@@ -184,6 +185,26 @@ class Scheduler:
         if self.scheduler_type == SchedulerType.SLURM:
             try:
                 result = subprocess.run(["ssh", remote_host, "test", "-e", remote_path], check=True)
+                return result.returncode == 0
+            except subprocess.CalledProcessError:
+                return False
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
+        
+    def get_remote_file_size(self, remote_host: str, remote_path: str) -> int:
+        if self.scheduler_type == SchedulerType.SLURM:
+            try:
+                result = subprocess.run(["ssh", remote_host, "stat", "-f", "%z", remote_path], check=True, capture_output=True, text=True)
+                return int(result.stdout.strip())
+            except subprocess.CalledProcessError:
+                raise RemoteExecutionException(f"Failed to get size of file {remote_path} from {remote_host}.")
+        else:
+            raise NotImplementedError(f"Scheduler type {self.scheduler_type} is not implemented yet.")
+        
+    def does_remote_file_contain(self, remote_host: str, remote_path: str, text: str) -> bool:
+        if self.scheduler_type == SchedulerType.SLURM:
+            try:
+                result = subprocess.run(["ssh", remote_host, "grep", "-q", text, remote_path], check=True)
                 return result.returncode == 0
             except subprocess.CalledProcessError:
                 return False

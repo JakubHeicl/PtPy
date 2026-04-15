@@ -263,12 +263,14 @@ class CalculationStep:
     remote_files: dict[str, Path] = field(default_factory=dict)
 
     job_id: str | None = None
+    start_time: int = 0
 
     def to_json(self) -> dict:
         return {
             "calculation_type": self.calculation_type.value,
             "status": self.status.value,
             "job_id": self.job_id,
+            "start_time": self.start_time,
             "folder": str(self.folder) if self.folder is not None else None,
             "remote_folder": str(self.remote_folder) if self.remote_folder is not None else None,
             "local_files": {key: str(path) for key, path in self.local_files.items()},
@@ -282,6 +284,7 @@ class CalculationStep:
             calculation_type=CalculationType(data["calculation_type"]),
             status=StepStatus(data["status"]),
             job_id=data.get("job_id"),
+            start_time=data.get("start_time", 0),
             folder=Path(folder) if folder is not None else None,
             remote_folder=Path(data["remote_folder"]) if data.get("remote_folder") is not None else None,
             local_files={key: Path(path) for key, path in data.get("local_files", {}).items()},

@@ -3,7 +3,7 @@ import shutil
 import time
 
 from .ir import WorkflowCase, CalculationStep, StepStatus, CalculationType, Repository
-from .config import AIM_CLUSTER, AIM_FOLDER, REPOSITORY_FOLDER, RUN_FOLDER, INPUT_FOLDER, SCHEDULER, LOOP_SLEEP_TIME
+from .config import AIM_CLUSTER, AIM_FOLDER, ALIP_ELSTAT_FOLDER, REPOSITORY_FOLDER, RUN_FOLDER, INPUT_FOLDER, SCHEDULER, LOOP_SLEEP_TIME, ALIP_ELSTAT_CLUSTER
 from .utils import get_charge_and_mult_from_com
 from .calculations_steps import CALCULATION_TYPE_TO_CHECK_STEP, CALCULATION_TYPE_TO_PREPARE_STEP, CALCULATION_TYPE_TO_RUN_STEP
 from .scheduler import Scheduler
@@ -195,4 +195,8 @@ def restore(verbose: bool = True, log_file: Path | None = None):
     if logger.reassure(f"The following script will be used 'rm -rf {AIM_FOLDER}/*'. Do you want to clear the AIM cluster folder as well?"):
         logger.log(f"Clearing AIM cluster folder '{AIM_FOLDER}'...")
         scheduler.run_remote_command(AIM_CLUSTER, f"rm -rf {AIM_FOLDER}/*"  )
+
+    if logger.reassure(f"The following script will be used 'rm -rf {ALIP_ELSTAT_FOLDER}/*'. Do you want to clear the ALIP ELSTAT cluster folder as well?"):
+        logger.log(f"Clearing ALIP ELSTAT cluster folder '{ALIP_ELSTAT_FOLDER}'...")
+        scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"rm -rf {ALIP_ELSTAT_FOLDER}/*"  )
         
