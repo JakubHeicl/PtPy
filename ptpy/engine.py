@@ -2,38 +2,34 @@ from pathlib import Path
 import shutil
 import time
 from tqdm import tqdm
+from copy import deepcopy
 
 from .ir import WorkflowCase, CalculationStep, StepStatus, CalculationType, Repository
 from .config import AIM_CLUSTER, AIM_FOLDER, ALIP_ELSTAT_FOLDER, REPOSITORY_FOLDER, RUN_FOLDER, INPUT_FOLDER, SCHEDULER, LOOP_SLEEP_TIME, ALIP_ELSTAT_CLUSTER
 from .utils import get_charge_and_mult_from_com
 from .calculations_steps import CALCULATION_TYPE_TO_CHECK_STEP, CALCULATION_TYPE_TO_PREPARE_STEP, CALCULATION_TYPE_TO_RUN_STEP
 from .scheduler import Scheduler
-from .logger import Logger
+from .interaction import Logger, Interaction, InteractionRequired, NoInteraction
 
+calculation_steps: list[CalculationStep] = [
+    CalculationStep(CalculationType.LANL_OPT, required_calculations=[]),
+    CalculationStep(CalculationType.DZ_OPT, required_calculations=[CalculationType.LANL_OPT]),
+    CalculationStep(CalculationType.AIM_ANALYSIS, required_calculations=[CalculationType.DZ_OPT]),
+    CalculationStep(CalculationType.LIGAND_ENERGIES_CALCULATION, required_calculations=[CalculationType.DZ_OPT]),
+    CalculationStep(CalculationType.ALIP_ELSTAT_CALCULATION, required_calculations=[CalculationType.DZ_OPT]),
+]
 
-def add_to_repository_from_input_folder(repo: Repository, input_folder: Path, logger: Logger):
+def add_to_repository_from_input_folder(repo: Repository, input_folder: Path, logger: Logger, interaction: Interaction):
     for input_file in input_folder.glob("*.xyz"):
         if repo.get_case_by_name(input_file.stem) is not None:
             continue
 
-        if not logger.verbose:
-            logger.log("Verbose mode is off. Cannot ask for charge and multiplicity for new .xyz input files. Please toggle verbose mode on to be able to provide the required information for the calculations.")
-            return
-        
-        not_correct = True
-        while not_correct:
-            try:
-                charge = float(logger.get_input(f"Enter charge for {input_file.name}: "))
-                mult = float(logger.get_input(f"Enter multiplicity for {input_file.name}: "))
-            except ValueError:
-                logger.log("Charge and multiplicity must be integer values. Please try again.")
-            if charge.is_integer() and mult.is_integer():
-                charge = int(charge)
-                mult = int(mult)
-                not_correct = False
-            else:
-                logger.log("Charge and multiplicity must be integer values. Please try again.")
-        
+        try:
+            charge, mult = interaction.request_xyz_metadata(input_file)
+        except InteractionRequired:
+            logger.log(f"Charge and multiplicity input is required for {input_file} but no interaction method is available. Skipping for now.")
+            continue
+            
         directory = Path(RUN_FOLDER, input_file.stem)
         directory.mkdir(parents=True, exist_ok=True)
 
@@ -43,9 +39,7 @@ def add_to_repository_from_input_folder(repo: Repository, input_folder: Path, lo
             input_file=Path(input_file),
             charge=charge,
             multiplicity=mult,
-            steps=[CalculationStep(calculation_type = calc_type, 
-                                   folder = Path(directory, calc_type.value), 
-                                   status = StepStatus.PENDING) for calc_type in CalculationType]
+            steps = deepcopy(calculation_steps)
         ))
 
     for input_file in input_folder.glob("*.com"):
@@ -63,24 +57,21 @@ def add_to_repository_from_input_folder(repo: Repository, input_folder: Path, lo
             input_file=Path(input_file),
             charge=charge,
             multiplicity=mult,
-            steps=[CalculationStep(calculation_type = calc_type, 
-                                   folder = Path(directory, calc_type.value), 
-                                   status = StepStatus.PENDING) for calc_type in CalculationType]
+            steps = deepcopy(calculation_steps)
         ))
 
-def proccess_case(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+def proccess_case(case: WorkflowCase, scheduler: Scheduler, logger: Logger, interaction: Interaction):
     current_step = case.get_current_step()
 
     if current_step.status == StepStatus.NOT_SURE:
+        if isinstance(interaction, NoInteraction):
+            return
+        
         logger.log(f"Current step {current_step.calculation_type.value} for case {case.name} is in not sure status. Please check the logs and fix the issue before re-running.")
 
-        if not logger.verbose:
-            logger.log("Verbose mode is off, try toggle it on to be able to retry the calculation after fixing the issue.")
-            return
-
-        if logger.reassure("Did the calculation finish successfully after checking the logs and fixing the issue?"):
+        if interaction.confirm("Did the calculation finish successfully after checking the logs and fixing the issue?", False):
             current_step.status = StepStatus.COMPLETED
-            proccess_case(case, scheduler, logger)
+            proccess_case(case, scheduler, logger, interaction)
         else:
             current_step.status = StepStatus.FAILED
             return
@@ -89,28 +80,25 @@ def proccess_case(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
         check_step(case, scheduler, logger)
 
     if current_step.status == StepStatus.NOT_SUBMITED:
-        run_step(case, scheduler, logger)
+        run_step(case, scheduler, logger, interaction)
 
     if current_step.status == StepStatus.PENDING:
-        prepare_step(case, scheduler, logger)
-        run_step(case, scheduler, logger)
+        prepare_step(case, scheduler, logger, interaction)
+        if current_step.status == StepStatus.NOT_SUBMITED:
+            run_step(case, scheduler, logger, interaction)
 
     if current_step.status == StepStatus.COMPLETED and not case.terminated:
         case.advance()
-        proccess_case(case, scheduler, logger)
+        proccess_case(case, scheduler, logger, interaction)
 
     if current_step.status == StepStatus.FAILED:
         logger.log(f"Calculation {current_step.calculation_type.value} for case {case.name} failed. Please check the logs and fix the issue before re-running.")
 
-        if not logger.verbose:
-            logger.log("Verbose mode is off, try toggle it on to be able to retry the calculation after fixing the issue.")
-            return
-
-        if logger.reassure("Do you want to retry the failed calculation after fixing the issue?"):
+        if interaction.confirm("Do you want to retry the failed calculation after fixing the issue?", False):
             current_step.status = StepStatus.PENDING
-            proccess_case(case, scheduler, logger)
+            proccess_case(case, scheduler, logger, interaction)
 
-def prepare_step(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+def prepare_step(case: WorkflowCase, scheduler: Scheduler, logger: Logger, interaction: Interaction):
     
     current_step = case.get_current_step()
     
@@ -118,13 +106,16 @@ def prepare_step(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
     if prepare_function is None:
         raise NotImplementedError(f"Unknown prepare step type: {current_step.calculation_type}")
     
-    prepare_function(case, scheduler, logger)
+    prepare_function(case, scheduler, logger, interaction)
 
-def run_step(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+def run_step(case: WorkflowCase, scheduler: Scheduler, logger: Logger, interaction: Interaction):
     
     current_step = case.get_current_step()
+
+    if current_step.status != StepStatus.NOT_SUBMITED:
+        return
     
-    if not logger.reassure(f"Do you want to run {current_step.calculation_type.value} for case {case.name}?"):
+    if not interaction.confirm(f"Do you want to run {current_step.calculation_type.value} for case {case.name}?", True):
         return
     
     run_function = CALCULATION_TYPE_TO_RUN_STEP.get(current_step.calculation_type)
@@ -143,8 +134,7 @@ def check_step(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
     
     check_function(case, scheduler, logger)
 
-def run(verbose: bool = True, log_file: Path | None = None, loop: bool = False, loop_delay: int = LOOP_SLEEP_TIME):
-    logger = Logger(verbose=verbose, log_file=log_file)
+def run(logger: Logger, interaction: Interaction, loop: bool = False, loop_delay: int = LOOP_SLEEP_TIME):
     continue_loop = True
 
     while continue_loop:
@@ -156,10 +146,10 @@ def run(verbose: bool = True, log_file: Path | None = None, loop: bool = False, 
         scheduler = Scheduler(SCHEDULER)
 
         repo.load_from_folder(REPOSITORY_FOLDER)
-        add_to_repository_from_input_folder(repo, INPUT_FOLDER, logger)
+        add_to_repository_from_input_folder(repo, INPUT_FOLDER, logger, interaction)
 
         for case in tqdm(repo.cases, desc="Processing cases"):
-            proccess_case(case, scheduler, logger)
+            proccess_case(case, scheduler, logger, interaction)
 
         repo.save_to_folder(REPOSITORY_FOLDER)
 
@@ -171,9 +161,7 @@ def run(verbose: bool = True, log_file: Path | None = None, loop: bool = False, 
             for _ in tqdm(range(loop_delay), desc="Waiting", unit="s"):
                 time.sleep(1)
 
-def show_status(verbose: bool = True, log_file: Path | None = None):
-    logger = Logger(verbose=verbose, log_file=log_file)
-
+def show_status(logger: Logger):
     if not REPOSITORY_FOLDER.exists():
         logger.log("No repository found. Please run the workflow first to create the repository.")
         return
@@ -188,8 +176,7 @@ def show_status(verbose: bool = True, log_file: Path | None = None):
             message += f" | Current step: {current_step.calculation_type.value:20s} - {current_step.status.value:10s}"
         logger.log(message)
 
-def restore(verbose: bool = True, log_file: Path | None = None):
-    logger = Logger(verbose=verbose, log_file=log_file)
+def restore(logger: Logger, interaction: Interaction):
     logger.log("Running restore...")
 
     scheduler = Scheduler(SCHEDULER)
@@ -210,11 +197,11 @@ def restore(verbose: bool = True, log_file: Path | None = None):
         logger.log(f"Removing run folder '{RUN_FOLDER}'...")
         shutil.rmtree(RUN_FOLDER, ignore_errors=True)
 
-    if logger.reassure(f"The following script will be used 'rm -rf {AIM_FOLDER}/*'. Do you want to clear the AIM cluster folder as well?"):
+    if interaction.confirm(f"The following script will be used 'rm -rf {AIM_FOLDER}/*'. Do you want to clear the AIM cluster folder as well?", False):
         logger.log(f"Clearing AIM cluster folder '{AIM_FOLDER}'...")
         scheduler.run_remote_command(AIM_CLUSTER, f"rm -rf {AIM_FOLDER}/*"  )
 
-    if logger.reassure(f"The following script will be used 'rm -rf {ALIP_ELSTAT_FOLDER}/*'. Do you want to clear the ALIP ELSTAT cluster folder as well?"):
+    if interaction.confirm(f"The following script will be used 'rm -rf {ALIP_ELSTAT_FOLDER}/*'. Do you want to clear the ALIP ELSTAT cluster folder as well?", False):
         logger.log(f"Clearing ALIP ELSTAT cluster folder '{ALIP_ELSTAT_FOLDER}'...")
         scheduler.run_remote_command(ALIP_ELSTAT_CLUSTER, f"rm -rf {ALIP_ELSTAT_FOLDER}/*"  )
         

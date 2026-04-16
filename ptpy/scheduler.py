@@ -4,7 +4,7 @@ import subprocess
 import shlex
 
 from .scripts import spust_g16_script
-from .config import SCHEDULER, PARTITION, NUMBER_OF_CORES_GAUSSAIN, MEMORY, USER
+from .config import SCHEDULER, PARTITION, NUMBER_CORES_GAUSSIAN, MEMORY, USER
 
 class UnsificientResourcesException(Exception):
     def __init__(self, message="No available resources to submit the job."):
@@ -106,7 +106,7 @@ class Scheduler:
             raise UnsificientResourcesException()
 
         job_script = spust_g16_script.substitute(
-            num_cpus=NUMBER_OF_CORES_GAUSSAIN,
+            num_cpus=NUMBER_CORES_GAUSSIAN,
             job_name=com_file.stem,
             memory=MEMORY,
             chk_file=chk_file.name,

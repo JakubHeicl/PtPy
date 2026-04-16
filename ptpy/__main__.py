@@ -1,7 +1,8 @@
 from pathlib import Path
+import argparse
 
 from .engine import run, show_status, restore
-import argparse
+from .interaction import NoInteraction, ConsoleInteraction, Logger
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--status", action="store_true", help="Show status of all cases in the repository.")
@@ -12,9 +13,16 @@ parser.add_argument("--loop", action="store_true", help="Run the workflow in a l
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    if args.status:
-        show_status(verbose = not args.do_not_ask, log_file=args.log_file)
-    elif args.restore:
-        restore(verbose = not args.do_not_ask, log_file=args.log_file)
+    logger = Logger(args.log_file)
+
+    if args.do_not_ask:
+        interaction = NoInteraction(logger)
     else:
-        run(verbose = not args.do_not_ask, log_file=args.log_file, loop=args.loop)
+        interaction = ConsoleInteraction(logger)
+
+    if args.status:
+        show_status(logger)
+    elif args.restore:
+        restore(logger, interaction)
+    else:
+        run(logger, interaction, loop=args.loop)

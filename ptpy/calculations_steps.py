@@ -1,4 +1,4 @@
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import time
 import shutil
 import numpy as np
@@ -9,16 +9,36 @@ from .scheduler import Scheduler, UnsificientResourcesException, RemoteExecution
 from .utils import xyz_to_lanl, com_to_lanl, make_dz_file, make_ligand_file
 from .config import AIM_CLUSTER, AIM_FOLDER, ALIP_SCRIPT, CONFIG_ALIP, LANL_EXTENSION, DZ_EXTENSION, LIGAND_EXTENSION, MAX_AIM_TIME, MAX_ALIP_TIME, NUMBER_OF_CORES_AIM, MAX_RUNNING_AIM, ALIP_ELSTAT_CLUSTER, ALIP_ELSTAT_FOLDER, POTMIT_EXE, ALIP_EXE ,ELSTAT_SCRIPT, ALIP_SCRIPT  
 from .scripts import aim_analysis_script
-from .logger import Logger
+from .interaction import Logger, Interaction, LigandReviewRequest, InteractionRequired
 
-def prepare_lanl_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+def init_step(case: WorkflowCase, expected_type: CalculationType, logger: Logger) -> bool:
+
+    current_step = case.get_current_step()
+
+    if current_step.calculation_type != expected_type:
+        logger.log(f"Current step for case {case.name} is {current_step.calculation_type.value}, expected {expected_type.value}. Cannot initialize step.")
+        current_step.status = StepStatus.FAILED
+        return False
+
+    for calc in current_step.required_calculations:
+
+        step = case.get_step(calc)
+        if step is None or step.status != StepStatus.COMPLETED:
+            logger.log(f"Required calculation {calc.value} for step {current_step.calculation_type.value} of case {case.name} is not completed yet. Cannot initialize step.")
+            current_step.status = StepStatus.FAILED
+            return False
+    
+    current_step.folder = Path(case.directory, current_step.calculation_type.value)
+    return True
+
+def prepare_lanl_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger, interaction: Interaction):
+
+    if not init_step(case, CalculationType.LANL_OPT, logger):
+        return
 
     current_step = case.get_current_step()
     folder = current_step.folder
     input_file = case.input_file
-
-    if current_step.calculation_type != CalculationType.LANL_OPT:
-        raise ValueError(f"Expected LANL OPTIMIZATION step, got {current_step.calculation_type}.")
     
     name = f"{case.name}_{LANL_EXTENSION}"
 
@@ -43,17 +63,15 @@ def prepare_lanl_optimization(case: WorkflowCase, scheduler: Scheduler, logger: 
 
     current_step.status = StepStatus.NOT_SUBMITED
 
-def prepare_dz_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+def prepare_dz_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Logger, interaction: Interaction):
+
+    if not init_step(case, CalculationType.DZ_OPT, logger):
+        return
 
     current_step = case.get_current_step()
     folder = current_step.folder
-
-    if current_step.calculation_type != CalculationType.DZ_OPT:
-        raise ValueError(f"Expected DZ OPTIMIZATION step, got {current_step.calculation_type}.")
     
     last_geometry = case.last_geometry
-    if last_geometry is None:
-        raise ValueError(f"No geometry found for case {case.name}. Cannot run DZ optimization.")
     
     name = f"{case.name}_{DZ_EXTENSION}"
     
@@ -79,21 +97,14 @@ def prepare_dz_optimization(case: WorkflowCase, scheduler: Scheduler, logger: Lo
 
     current_step.status = StepStatus.NOT_SUBMITED
     
-def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger, interaction: Interaction):
 
-    if case.get_repository().metadata.get("running_aim") is None:
-        case.get_repository().metadata["running_aim"] = 0
+    if not init_step(case, CalculationType.AIM_ANALYSIS, logger):
+        return
 
     current_step = case.get_current_step()
-    previous_step = case.get_previous_step()
 
-    if current_step.calculation_type != CalculationType.AIM_ANALYSIS:
-        raise ValueError(f"Expected AIM ANALYSIS step, got {current_step.calculation_type}.")
-    
-    if previous_step.calculation_type != CalculationType.DZ_OPT:
-        raise ValueError(f"Expected previous step to be DZ OPTIMIZATION, got {previous_step.calculation_type}.")
-    
-    dz_fchk_file = previous_step.local_files.get("fchk")
+    dz_fchk_file = case.get_step(CalculationType.DZ_OPT).local_files.get("fchk")
 
     if dz_fchk_file is None or not dz_fchk_file.exists():
         logger.log(f"Formchk file from previous DZ optimization step is not available for case {case.name}. Cannot prepare AIM analysis.")
@@ -102,7 +113,7 @@ def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logge
 
     folder = current_step.folder
     folder.mkdir(parents=True, exist_ok=True)
-    current_step.remote_folder = Path(AIM_FOLDER, case.name)
+    current_step.remote_folder = PurePosixPath(AIM_FOLDER, case.name)
 
     shutil.copy(dz_fchk_file, folder)
 
@@ -115,12 +126,12 @@ def prepare_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logge
     current_step.local_files["out"] = Path(folder, "output.log")
 
     #Remote files that will be transferred to be used for AIM analysis
-    current_step.remote_files["fchk"] = Path(current_step.remote_folder, dz_fchk_file.name)
+    current_step.remote_files["fchk"] = PurePosixPath(current_step.remote_folder, dz_fchk_file.name)
 
     #Remote files, that are expected to be generated
     current_step.remote_files["sum"] = current_step.remote_files.get("fchk").with_suffix(".sum")
     current_step.remote_files["wfx"] = current_step.remote_files.get("fchk").with_suffix(".wfx")
-    current_step.remote_files["out"] = Path(current_step.remote_folder, "output.log")
+    current_step.remote_files["out"] = PurePosixPath(current_step.remote_folder, "output.log")
 
     current_step.status = StepStatus.NOT_SUBMITED
 
@@ -128,16 +139,14 @@ def run_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
 
     current_step = case.get_current_step()
 
-    if case.get_repository().metadata.get("running_aim", 0) >= MAX_RUNNING_AIM:
-        logger.log(f"Maximum number of running AIM analyses reached. Cannot run AIM analysis for case {case.name} now. Trying again later...")
-        current_step.status = StepStatus.NOT_SUBMITED
+    if case.get_repository().get_number_of_cases_by_step_status(CalculationType.AIM_ANALYSIS, StepStatus.RUNNING) >= MAX_RUNNING_AIM:
+        logger.log(f"Maximum number of running AIM analyses ({MAX_RUNNING_AIM}) reached. Waiting for a slot to be free...")
         return
 
     remote_folder = current_step.remote_folder
     formchk_file = current_step.local_files.get("fchk")
 
     try:
-
         aim_script = aim_analysis_script.substitute(folder=remote_folder, fchk_file=current_step.remote_files.get("fchk").name, num_cpus=NUMBER_OF_CORES_AIM)
 
         logger.log(f"Running command on {AIM_CLUSTER}: mkdir -p {remote_folder}")
@@ -153,41 +162,29 @@ def run_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
     
     current_step.start_time = int(time.time())
     current_step.status = StepStatus.RUNNING
-    case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) + 1
     logger.log(f"Submitted AIM analysis for case {case.name} on cluster {AIM_CLUSTER}.")
 
-def prepare_ligand_energies(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+def prepare_ligand_energies(case: WorkflowCase, scheduler: Scheduler, logger: Logger, interaction: Interaction):
+
+    if not init_step(case, CalculationType.LIGAND_ENERGIES_CALCULATION, logger):
+        return
 
     geometry = case.last_geometry
 
-    if geometry is None:
-        raise ValueError(f"No geometry found for case {case.name}. Cannot run ligand energies calculation.")
-
-    if not logger.verbose:
-        logger.log("Verbose mode is off. To proceed with ligand energies calculation, please turn on verbose mode to see the ligands and confirm that they are correct.")
+    try:
+        ligand_review_response = interaction.review_ligands(LigandReviewRequest(
+            case_name=case.name,
+            pt_neighbors_labels=[f"{atom.symbol}{geometry.get_atom_index(atom)}" for atom in geometry.pt_neighbors],
+            suggested_ligands=[[geometry.get_atom_index(atom) for atom in ligand] for ligand in geometry.ligands],
+            atom_labels=[f"{atom.symbol}{geometry.get_atom_index(atom)}" for atom in geometry.atoms],
+            total_charge=case.charge
+        ))
+    except InteractionRequired:
+        logger.log(f"Ligand review is required for case {case.name} but no interaction method is available. Skipping for now.")
         return
-
-    for i, _ in enumerate(geometry.ligands): logger.log(f"Ligand for {geometry.pt_neighbors[i].symbol}{geometry.get_atom_index(geometry.pt_neighbors[i])}:\n{geometry.ligand_to_str(i)}\n")
-
-    if not logger.reassure("Please confirm that the ligands are correct. Do you want to proceed with ligand energies calculation?"):
-        
-        geometry.ligands = []
-        for atom in geometry.atoms: logger.log(f"{geometry.get_atom_index(atom):<4} {atom.symbol:<3}")
-        for atom in geometry.pt_neighbors:
-            ligand = []
-            for index in np.array(logger.get_input(f"Write index of atoms to the ligand {atom.symbol}{geometry.get_atom_index(atom)}:\n").strip().split(), dtype = int):
-                ligand.append(geometry.get_atom(index))
-            geometry.ligands.append(ligand)
-
-        for i, _ in enumerate(geometry.ligands): logger.log(f"Ligand for {geometry.pt_neighbors[i].symbol}{geometry.get_atom_index(geometry.pt_neighbors[i])}:\n{geometry.ligand_to_str(i)}\n")
-
-    not_correct = True
-    while not_correct:
-        geometry.ligand_charges = [int(x) for x in logger.get_input(f"Write formal charges to each ligand (space-separated). The total charge is {case.charge}\n").strip().split()]
-        if (sum(geometry.ligand_charges)+4) != case.charge:
-            logger.log(f"Warning: The total charge of the ligands ({sum(geometry.ligand_charges)}) does not match the expected total charge ({case.charge}). Please double-check the charges you entered.")
-        else:
-            not_correct = False
+    
+    geometry.ligand_charges = ligand_review_response.ligand_charges
+    geometry.ligands = [[geometry.atoms[index] for index in ligand] for ligand in ligand_review_response.ligands]
 
     current_step = case.get_current_step()
     folder = current_step.folder
@@ -214,9 +211,6 @@ def run_gaussian_calculation(case: WorkflowCase, scheduler: Scheduler, logger: L
 
     current_step = case.get_current_step()
 
-    if current_step.status != StepStatus.NOT_SUBMITED:
-        return
-
     folder = current_step.folder
     com_file = current_step.local_files.get("com")
     chk_file = current_step.local_files.get("chk")
@@ -237,20 +231,17 @@ def run_gaussian_calculation(case: WorkflowCase, scheduler: Scheduler, logger: L
     current_step.status = StepStatus.RUNNING
     logger.log(f"Submitted {current_step.calculation_type.value} for case {case.name} with job ID {job_id}.")
 
-def prepare_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
+def prepare_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger, interaction: Interaction):
 
-    dz_step = case.get_dz_opt_step()
+    if not init_step(case, CalculationType.ALIP_ELSTAT_CALCULATION, logger):
+        return
 
     current_step = case.get_current_step()
+    dz_step = case.get_step(CalculationType.DZ_OPT)
 
     folder = current_step.folder
     folder.mkdir(parents=True, exist_ok=True)
-    current_step.remote_folder = Path(ALIP_ELSTAT_FOLDER, case.name)
-
-    if dz_step is None or dz_step.local_files.get("den") is None or dz_step.local_files.get("pot") is None or dz_step.local_files.get("fchk") is None:
-        logger.log(f"Missing required files for {current_step.calculation_type.value} of case {case.name}.")
-        current_step.status = StepStatus.FAILED
-        return
+    current_step.remote_folder = PurePosixPath(ALIP_ELSTAT_FOLDER, case.name)
 
     den_file = dz_step.local_files.get("den")
     pot_file = dz_step.local_files.get("pot")
@@ -266,13 +257,13 @@ def prepare_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, lo
     current_step.local_files["fchk"] = Path(folder, fchk_file.name)
 
     #Local files that will be transferred to be used for ALIP ELSTAT calculation
-    current_step.remote_files["den"] = Path(current_step.remote_folder, den_file.name)
-    current_step.remote_files["pot"] = Path(current_step.remote_folder, pot_file.name)
-    current_step.remote_files["fchk"] = Path(current_step.remote_folder, fchk_file.name)
+    current_step.remote_files["den"] = PurePosixPath(current_step.remote_folder, den_file.name)
+    current_step.remote_files["pot"] = PurePosixPath(current_step.remote_folder, pot_file.name)
+    current_step.remote_files["fchk"] = PurePosixPath(current_step.remote_folder, fchk_file.name)
 
     #Remote files, that are expected to be generated
-    current_step.remote_files["exa"] = Path(current_step.remote_folder, den_file.with_suffix(".exa-s").name)
-    current_step.remote_files["exp"] = Path(current_step.remote_folder, den_file.with_suffix(".exp-s").name)
+    current_step.remote_files["exa"] = PurePosixPath(current_step.remote_folder, den_file.with_suffix(".exa-s").name)
+    current_step.remote_files["exp"] = PurePosixPath(current_step.remote_folder, den_file.with_suffix(".exp-s").name)
 
     #Local files that are expected to be generated and then transferred
     current_step.local_files["exa"] = Path(folder, den_file.with_suffix(".exa-s").name)
@@ -283,9 +274,6 @@ def prepare_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, lo
 def run_alip_elstat_calculation(case: WorkflowCase, scheduler: Scheduler, logger: Logger):
 
     current_step = case.get_current_step()
-
-    if current_step.status != StepStatus.NOT_SUBMITED:
-        return
 
     remote_folder = current_step.remote_folder
     den_file = current_step.local_files.get("den")
@@ -390,10 +378,8 @@ def check_aim_analysis(case: WorkflowCase, scheduler: Scheduler, logger: Logger)
                 scheduler.transfer_file_from_remote(AIM_CLUSTER, str(wfx_file), current_step.folder)
                 scheduler.run_remote_command(AIM_CLUSTER, f"rm -rf {current_step.remote_folder}")
                 current_step.status = StepStatus.COMPLETED
-                case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) - 1
                 logger.log(f"AIM analysis for case {case.name} completed successfully.")
         if current_step.start_time and time.time() - current_step.start_time > MAX_AIM_TIME:
-            case.get_repository().metadata["running_aim"] = case.get_repository().metadata.get("running_aim", 0) - 1
             logger.log(f"AIM analysis for case {case.name} is running for a long time. Please check the output log for details. Marking as not sure for now.")
             current_step.status = StepStatus.NOT_SURE  
 

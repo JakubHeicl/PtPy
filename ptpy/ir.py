@@ -1,11 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from enum import Enum
 import json
 import numpy as np
-
-from .config import METADATA_FILE
 
 _SYMBOLS: list[str] = [
     "X",
@@ -64,7 +62,7 @@ class Geometry:
     atoms: list[Atom]
     look_for_ligands: bool = False
     pt_neighbors: list[Atom] | None = None
-    ligands: list[set[Atom]] | None = None
+    ligands: list[list[Atom]] | None = None
     ligand_charges: list[int] | None = None 
 
     def __post_init__(self):
@@ -135,16 +133,16 @@ class Geometry:
         
         return list(map(list, zip(*distances[:num_neighbors])))[0]
     
-    def find_ligands(self) -> list[set[Atom]] | None:
+    def find_ligands(self) -> list[list[Atom]] | None:
         
-        ligands: list[set[Atom]] = []
-        pt_neighbors = self.find_neighbors(self.get_Pt_atom(), num_neighbors=6, for_Pt=True)
+        ligands: list[list[Atom]] = []
+        pt_neighbors = self.pt_neighbors
         assigned_atoms = set(pt_neighbors) #Set for tracking which atoms have already been assigned to a ligand, starting with Pt neighbors
         assigned_atoms.add(self.get_Pt_atom())
 
         #Every neighbor of Pt is a starting point for a ligand, we will expand from there and then merge ligands if they are linked together
         for pt_neighbor in pt_neighbors:
-            ligand = set([pt_neighbor])
+            ligand = [pt_neighbor]
             queue = [pt_neighbor]  # We will use a queue to perform a breadth-first search for neighboring atoms to add to the ligand
         
             while queue:
@@ -171,7 +169,7 @@ class Geometry:
                             )
                         too_far = current_atom.dist(new_atom) > max_dist
                         if not too_close and not too_far:
-                            ligand.add(new_atom)
+                            ligand.append(new_atom)
                             queue.append(new_atom)  # Add the new atom to the queue to find its neighbors in the next iterations
                             assigned_atoms.add(new_atom)
 
@@ -194,7 +192,7 @@ class Geometry:
                         for other_ligand_atom in other_ligand:
                             if ligand_atom.dist(other_ligand_atom) < 1.75:
                                 
-                                ligand.update(other_ligand)
+                                ligand.extend(other_ligand)
                                 ligands.remove(other_ligand)
                                 merged = True
                                 break
@@ -225,11 +223,21 @@ class Geometry:
             for ligand in ligands:
                 if atom in ligand:
                     final_ligands.append(ligand)
-                    
-        return final_ligands
+
+        #sort the ligands by the pt neighbor they are linked to, so the order of ligands is always the same and corresponds to the order of pt neighbors
+        sorted_final_ligands = []
+        used_ligands = list()
+        for pt_neighbor in pt_neighbors:
+            for ligand in final_ligands:
+                if pt_neighbor in ligand and ligand not in used_ligands:
+                    sorted_final_ligands.append(ligand)
+                    used_ligands.append(ligand)
+                    break
+
+        return sorted_final_ligands
 
     def ligand_to_str(self, ligand_index):
-        ligand: set[Atom] = self.ligands[ligand_index]
+        ligand: list[Atom] = self.ligands[ligand_index]
         final_string = ""
         
         for atom in ligand:
@@ -255,12 +263,14 @@ class StepStatus(Enum):
 @dataclass
 class CalculationStep:
     calculation_type: CalculationType
-    status: StepStatus
-    folder: Path
-    remote_folder: Path | None = None
+    required_calculations: list[CalculationType]
+
+    status: StepStatus = StepStatus.PENDING
+    folder: Path | None = None
+    remote_folder: PurePosixPath | None = None
 
     local_files: dict[str, Path] = field(default_factory=dict)
-    remote_files: dict[str, Path] = field(default_factory=dict)
+    remote_files: dict[str, PurePosixPath] = field(default_factory=dict)
 
     job_id: str | None = None
     start_time: int = 0
@@ -268,6 +278,7 @@ class CalculationStep:
     def to_json(self) -> dict:
         return {
             "calculation_type": self.calculation_type.value,
+            "required_calculations": [calc.value for calc in self.required_calculations],
             "status": self.status.value,
             "job_id": self.job_id,
             "start_time": self.start_time,
@@ -282,13 +293,14 @@ class CalculationStep:
         folder = data.get("folder")
         return cls(
             calculation_type=CalculationType(data["calculation_type"]),
+            required_calculations=[CalculationType(calc) for calc in data.get("required_calculations", [])],
             status=StepStatus(data["status"]),
             job_id=data.get("job_id"),
             start_time=data.get("start_time", 0),
             folder=Path(folder) if folder is not None else None,
-            remote_folder=Path(data["remote_folder"]) if data.get("remote_folder") is not None else None,
+            remote_folder=PurePosixPath(data["remote_folder"]) if data.get("remote_folder") is not None else None,
             local_files={key: Path(path) for key, path in data.get("local_files", {}).items()},
-            remote_files={key: Path(path) for key, path in data.get("remote_files", {}).items()},
+            remote_files={key: PurePosixPath(path) for key, path in data.get("remote_files", {}).items()},
         )
     
 @dataclass
@@ -337,19 +349,25 @@ class WorkflowCase:
             return self.steps[self.current_step_index]
         raise IndexError("Current step index is out of range.")
     
-    def get_previous_step(self) -> CalculationStep | None:
+    """def get_previous_step(self) -> CalculationStep | None:
         if self.current_step_index > 0:
             return self.steps[self.current_step_index - 1]
-        return None
+        return None"""
     
     def get_next_step(self) -> CalculationStep | None:
         if self.current_step_index < len(self.steps) - 1:
             return self.steps[self.current_step_index + 1]
         return None
     
-    def get_dz_opt_step(self) -> CalculationStep | None:
+    """def get_dz_opt_step(self) -> CalculationStep | None:
         for step in self.steps:
             if step.calculation_type == CalculationType.DZ_OPT:
+                return step
+        return None"""
+    
+    def get_step(self, calculation_type: CalculationType) -> CalculationStep | None:
+        for step in self.steps:
+            if step.calculation_type == calculation_type:
                 return step
         return None
     
@@ -367,7 +385,6 @@ class WorkflowCase:
 @dataclass
 class Repository:
     cases: list[WorkflowCase] = field(default_factory=list)
-    metadata: dict = field(default_factory=dict)
 
     def add_case(self, case: WorkflowCase):
         if self.get_case_by_name(case.name) is not None:
@@ -395,23 +412,19 @@ class Repository:
             with open(case_file, "w", encoding="utf-8") as f:
                 json.dump(case.to_json(), f, indent=4)
 
-        with open(Path(folder_path, METADATA_FILE), "w", encoding="utf-8") as f:
-            json.dump(self.metadata, f, indent=4)
-
     def load_from_folder(self, folder_path: Path):
         if not folder_path.exists():
             raise RuntimeError(f"Folder {folder_path} does not exist. Cannot load repository.")
         for case_file in folder_path.glob("*.json"):
-            if case_file.name == METADATA_FILE.name:
-                continue
             with open(case_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 self.add_from_json(data)
 
-        metadata_file = Path(folder_path, METADATA_FILE)
-        if metadata_file.exists():
-            with open(metadata_file, "r", encoding="utf-8") as f:
-                self.metadata = json.load(f)
-        else:
-            self.metadata = {}
+    def get_number_of_cases_by_step_status(self, calculation_type: CalculationType, status: StepStatus) -> int:
+        count = 0
+        for case in self.cases:
+            step = case.get_step(calculation_type)
+            if step is not None and step.status == status:
+                count += 1
+        return count
 
