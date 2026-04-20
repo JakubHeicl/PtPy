@@ -5,7 +5,7 @@ import sys
 from .engine import run, show_status, restore, stop_loop
 from .config import SUG_DIR
 from .interaction import NoInteraction, ConsoleInteraction, Logger
-from smiles import process_smiles_file
+from .smiles import process_smiles_file
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--status", action="store_true", help="Show status of all cases in the repository.")
