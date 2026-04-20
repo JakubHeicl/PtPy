@@ -2,7 +2,7 @@ from pathlib import Path, PurePosixPath
 
 PACKAGE_ROOT            = Path(__file__).resolve().parent
 
-INPUT_FOLDER: Path      = Path("input_files")
+INPUT_DIR: Path      = Path("input_files")
 REPOSITORY_DIR: Path    = Path("repository")
 RUNS_DIR: Path          = Path("runs")
 SUG_DIR: Path           = Path("input_suggestions")

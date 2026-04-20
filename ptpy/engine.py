@@ -5,7 +5,7 @@ from tqdm import tqdm
 from copy import deepcopy
 
 from .ir import WorkflowCase, CalculationStep, StepStatus, CalculationType, Repository
-from .config import AIM_CLUSTER, AIM_REMOTE_DIR, ALIP_ELSTAT_REMOTE_DIR, REPOSITORY_DIR, RUNS_DIR, INPUT_FOLDER, SCHEDULER, LOOP_SLEEP_TIME, ALIP_ELSTAT_CLUSTER, STOP_FILE
+from .config import AIM_CLUSTER, AIM_REMOTE_DIR, ALIP_ELSTAT_REMOTE_DIR, REPOSITORY_DIR, RUNS_DIR, INPUT_DIR, SCHEDULER, LOOP_SLEEP_TIME, ALIP_ELSTAT_CLUSTER, STOP_FILE, SUG_DIR
 from .utils import get_charge_and_mult_from_com
 from .calculations_steps import CALCULATION_TYPE_TO_CHECK_STEP, CALCULATION_TYPE_TO_PREPARE_STEP, CALCULATION_TYPE_TO_RUN_STEP
 from .scheduler import Scheduler
@@ -138,7 +138,7 @@ def run(logger: Logger, interaction: Interaction, loop: bool = False, loop_delay
     continue_loop = True
 
     while continue_loop:
-        INPUT_FOLDER.mkdir(parents=True, exist_ok=True)
+        INPUT_DIR.mkdir(parents=True, exist_ok=True)
         REPOSITORY_DIR.mkdir(parents=True, exist_ok=True)
         RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -146,7 +146,7 @@ def run(logger: Logger, interaction: Interaction, loop: bool = False, loop_delay
         scheduler = Scheduler(SCHEDULER)
 
         repo.load_from_folder(REPOSITORY_DIR)
-        add_to_repository_from_input_folder(repo, INPUT_FOLDER, logger, interaction)
+        add_to_repository_from_input_folder(repo, INPUT_DIR, logger, interaction)
 
         for case in repo.cases:
             process_case(case, scheduler, logger, interaction)
@@ -218,3 +218,10 @@ def restore(logger: Logger, interaction: Interaction):
 def stop_loop():
     STOP_FILE.parent.mkdir(parents=True, exist_ok=True)
     STOP_FILE.touch()
+
+def initialize(logger: Logger):
+    logger.log("Initializing the repository and creating the necessary folders and files...")
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    REPOSITORY_DIR.mkdir(parents=True, exist_ok=True)
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    SUG_DIR.mkdir(parents=True, exist_ok=True)
